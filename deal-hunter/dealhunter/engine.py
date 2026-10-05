@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # quanto della distanza tra offerta attuale e valore si "mangia" la concorrenza prima della fine
 # (prudente: sulle aste online molto seguite il prezzo finale arriva vicino al valore)
 AUCTION_COMPETITION = {"catawiki": 0.8, "ebay": 0.75, "zoll": 0.7, "affide": 0.7, "judicial": 0.3,
-                       "buyee": 0.7, "liveauctioneers": 0.7}
+                       "buyee": 0.7, "liveauctioneers": 0.7, "watchcollecting": 0.8, "ricardo": 0.7}
 
 
 class Engine:
@@ -53,6 +53,7 @@ class Engine:
         ))
         self.market = Market(self.http, self.db, self.cfg.get("market"))
         self.comps = CompsEngine(self.http, self.db, self.market, self.cfg["comps"])
+        self.comps.cfg["watchcollecting_cfg"] = self.cfg["sources"].get("watchcollecting", {})
         self.notifier = Notifier(self.http, self.cfg["alerts"], self.cfg["secrets"])
         self.browser = None
         self.sources: dict[str, Source] = {}

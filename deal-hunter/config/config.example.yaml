@@ -39,6 +39,7 @@ comps:
   cardmarket: true
   chrono24: true          # prezzi richiesti su Chrono24 come riferimento per gli orologi
   own_history: true       # il bot rilegge le aste Catawiki chiuse e ne salva il prezzo pagato
+  watchcollecting: true   # venduti di watchcollecting.com come comparabili per gli orologi
 
 # Intervalli in minuti. I marketplace di privati vanno controllati spesso: l'affare
 # vero dura poche ore. Le aste e i cataloghi cambiano più lentamente.
@@ -53,5 +54,13 @@ sources:
   affide:   {enabled: true,  interval: 180}
   judicial: {enabled: true,  interval: 360}
   chrono24: {enabled: true,  interval: 60}            # serve Playwright (Cloudflare); senza viene saltato
+  # --- portali orologi ---
+  kleinanzeigen:   {enabled: true,  interval: 20}     # Germania, privati (categoria Uhren & Schmuck)
+  marktplaats:     {enabled: true,  interval: 30}     # Olanda + Belgio (2dehands)
+  willhaben:       {enabled: true,  interval: 30}     # Austria
+  watchexchange:   {enabled: true,  interval: 15}     # Reddit r/Watchexchange (feed RSS, collezionisti USA/UK/EU)
+  watchcollecting: {enabled: true,  interval: 60}     # aste UK, spesso senza riserva
+  orologipassioni: {enabled: true,  interval: 60}     # mercatino del forum Orologi & Passioni
+  ricardo:         {enabled: false, interval: 60}     # Svizzera: molti spediscono solo in CH
   buyee:    {enabled: false, interval: 60}            # serve Playwright (vedi README)
   liveauctioneers: {enabled: false, interval: 240}    # commissioni USA alte: utile soprattutto come venduti

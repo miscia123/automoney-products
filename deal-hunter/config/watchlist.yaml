@@ -32,12 +32,24 @@ queries:
   - {q: "grand seiko", category: watch, min_price: 1500, ja: "グランドセイコー"}
   - {q: "heuer carrera vintage", category: watch, min_price: 1500}
   - {q: "universal geneve compax", category: watch, min_price: 1500}
-  - {q: "orologio oro 18kt", category: watch, min_price: 400, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "orologio oro 18kt", category: watch, min_price: 400, exclude_sources: [buyee, liveauctioneers],
+     de: "Golduhr 750", en: "18k gold watch"}
+  - {q: "omega oro vintage", category: watch, min_price: 600, de: "Omega Gold vintage", en: "omega gold vintage"}
+  - {q: "longines oro", category: watch, min_price: 400, de: "Longines Gold 750", en: "longines 18k gold"}
+  - {q: "vacheron constantin", category: watch, min_price: 3000}
+  - {q: "a. lange sohne", category: watch, min_price: 10000}
+  - {q: "zenith el primero", category: watch, min_price: 1500}
+  - {q: "omega speedmaster 145.022", category: watch, min_price: 2500}
+  - {q: "rolex 1675", category: watch, min_price: 8000}
+  - {q: "rolex 16610", category: watch, min_price: 5000}
+  - {q: "rolex 14060", category: watch, min_price: 4000}
+  - {q: "tudor submariner", category: watch, min_price: 2500}
 
   # --- Oro a peso e monete da investimento: valore verificabile al grammo -----------
   - {q: "sterlina oro", category: bullion_coin, min_price: 300, exclude_sources: [buyee, liveauctioneers]}
   - {q: "marengo oro", category: bullion_coin, min_price: 250, exclude_sources: [buyee, liveauctioneers]}
   - {q: "krugerrand", category: bullion_coin, min_price: 1500}
+  - {q: "sovereign gold", category: bullion_coin, min_price: 300, sources: [ebay, catawiki]}
   - {q: "lingotto oro", category: bullion_coin, min_price: 300, exclude_sources: [liveauctioneers]}
   - {q: "20 dollari oro", category: bullion_coin, min_price: 1500}
   - {q: "bracciale oro 18kt", category: gold, min_price: 300, exclude_sources: [buyee, liveauctioneers]}

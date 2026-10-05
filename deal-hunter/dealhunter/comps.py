@@ -24,6 +24,7 @@ from .models import Attributes, Category, Comparable, Listing
 from .sources.auctions import liveauctioneers_sold
 from .sources.chrono24 import chrono24_asks
 from .sources.ebay import ebay_sold
+from .sources.watches import watchcollecting_sold
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ class CompsEngine:
             tasks.append(self._cached(f"la:{q}", lambda: liveauctioneers_sold(self.http, self.market, q)))
         if attrs.category == Category.WATCH and self.browser is not None:
             tasks.append(self._cached(f"c24:{q}", lambda: chrono24_asks(self.browser, self.market, q)))
+        if attrs.category == Category.WATCH and self.cfg.get("watchcollecting", True):
+            tasks.append(self._cached(f"wc:{q}", lambda: watchcollecting_sold(
+                self.http, self.market, self.cfg.get("watchcollecting_cfg") or {}, q)))
         if attrs.category == Category.WATCH and self.cfg.get("own_history", True):
             tasks.append(self._own_history(listing, attrs))
         if attrs.category == Category.CARD and self.cfg.get("cardmarket", True):

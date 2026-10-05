@@ -23,6 +23,18 @@ class Query:
     def text(self, lang: str) -> str:
         return self.translations.get(lang, self.q)
 
+    def foreign_text(self, lang: str) -> str | None:
+        """Testo per un sito estero: la traduzione, oppure la query se non contiene parole italiane
+        (marche e referenze vanno bene ovunque). None = query da saltare su quel sito."""
+        if lang in self.translations:
+            return self.translations[lang]
+        import re
+
+        if re.search(r"\b(orologio|oro|bracciale|collana|catena|sterlina|marengo|lingotto|usato|grammi|"
+                     r"argento|anello|sigillato|borsa)\b", self.q, re.I):
+            return None
+        return self.q
+
 
 class Source:
     """Una sorgente sa cercare annunci per una query. Niente valutazione qui dentro."""

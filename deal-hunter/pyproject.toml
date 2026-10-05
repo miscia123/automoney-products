@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+browser = ["playwright>=1.40"]  # Chrono24, Buyee e qualsiasi sorgente con use_browser
 
 [project.scripts]
 dealhunter = "dealhunter.cli:main"

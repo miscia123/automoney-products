@@ -18,10 +18,24 @@ Base: il documento "Siti di aste per fare affari" (circa 95 siti in 18 sezioni).
 | **eBay.it / .de** | Aste in chiusura, annunci nuovi | Browse API ufficiale (chiavi gratuite) o pagina di ricerca | 15 min | Serve anche per i **prezzi venduti**. |
 | **Vinted** | Gioielli e orologi sottoprezzati | Nuova API `api.vinted.it/svc-catalogue` (quella vecchia è stata chiusa a settembre 2026) | 15 min | Usa DataDome: funziona da casa, spesso non da un server. |
 | **Wallapop** | Privati, inventario italiano più piccolo | API `api.wallapop.com/api/v3/search`, nessun anti-bot | 20 min | |
-| **Catawiki** | Aste settimanali di orologi, gioielli, monete, carte | Dati `__NEXT_DATA__` della ricerca + API delle offerte `/buyer/api/v3/bidding/lots` | 30 min | PerimeterX; commissione 9% + 3 €. Avvisa solo nelle ultime 24 ore. |
+| **Catawiki** | Aste settimanali di orologi, gioielli, monete, carte | Dati `__NEXT_DATA__` della ricerca + API delle offerte `/buyer/api/v3/bidding/lots`; in più scansione di **tutta la categoria Orologi** (333) per i lotti in chiusura | 30 min | PerimeterX (se blocca: `use_browser: true`); commissione 9% + 3 €. Avvisa solo nelle ultime 24 ore. I lotti chiusi vengono riletti e il prezzo pagato entra nello **storico dei venduti**. |
 | **Affide** | Aste su pegno: oro a peso, orologi, monete | Pagine HTML (TYPO3) calendario → asta → lotto | 3 ore | Lotti periziati: rischio falso minimo. **Diritti d'asta 25% + IVA** (circa 30,5%). |
 | **Zoll-Auktion** (DE) | Aste dello Stato tedesco: orologi, gioielli, metalli, monete | HTML senza protezioni; categorie 243, 242, 1115, 240 | 1 ora | Nessuna commissione. Spedisce all'estero **solo se l'asta lo prevede**: il bot segnala i lotti "solo ritiro". |
 | **Vendite giudiziarie** | Gioielli, Rolex e preziosi da fallimenti e pignoramenti | **PVP**: API JSON pubblica (lotti MOBILI). **Astegiudiziarie.it**: API `webapi.astegiudiziarie.it` (tipologia 11, arte e oreficeria). **Fallcoaste**: HTML delle categorie orologi-gioielli e preziosi | 6 ore | Nessuna garanzia (art. 2922 c.c.); diritti IVG intorno al 15% + IVA. Offerta minima = 75% della base. |
+
+## A2. Portali di orologi (attivi di default)
+
+| Sorgente | Cosa trova | Accesso tecnico | Frequenza | Note |
+|---|---|---|---|---|
+| **Chrono24** | Il mercato più grande: annunci nuovi per modello e referenza | Pagina di ricerca letta da un **browser vero** (Cloudflare), ordinata per "più recenti" | 1 ora | Serve Playwright, altrimenti viene saltata con un avviso. I prezzi richiesti fanno anche da **riferimento** (scontati del 12%). Paese del venditore letto dalla scheda: dazi e IVA se è extra UE. |
+| **Kleinanzeigen.de** | Privati tedeschi, il volume più alto d'Europa | Ricerca HTML nella categoria Uhren & Schmuck (`c157`), con fallback per il nuovo layout | 20 min | Nessuna tutela fuori dalla Germania: PayPal Beni e servizi o ritiro. Segnala "Nur Abholung" (solo ritiro) e "VB" (trattabile). |
+| **Marktplaats.nl + 2dehands.be** | Privati olandesi e belgi | API JSON pubblica `/lrp/api/search` | 30 min | Segnala gli annunci "Ophalen" (solo ritiro). |
+| **Willhaben.at** | Privati austriaci | Dati `__NEXT_DATA__` della ricerca | 30 min | |
+| **Reddit r/Watchexchange** | Collezionisti USA, UK ed EU: post "[WTS]" con prezzo | Feed RSS `/new/.rss` (il JSON è chiuso agli anonimi dal 2026) | 15 min | Scarta i post solo per gli USA continentali (CONUS). Dagli USA: dazi e IVA. |
+| **Watch Collecting** (UK) | Aste di orologi curate, spesso **senza riserva** | API di ricerca Typesense del sito; la chiave pubblica è letta dal sito a ogni avvio | 1 ora | Commissione 10% + IVA. L'archivio dei **venduti** entra nei comparabili. |
+| **Orologi & Passioni** | Mercatino del più grande forum italiano | Pagine pubbliche ForumFree: sezioni "Compro & Vendo", poi il primo post di ogni discussione "Vendo" | 1 ora | Prezzo cercato nel testo. Rischio più basso dei marketplace grazie alla reputazione sul forum. |
+
+Spenta di default: **Ricardo.ch** (aste svizzere, API JSON). Molti venditori spediscono solo in Svizzera e all'import si paga l'IVA.
 
 ## B. Nel bot, spente di default
 
@@ -39,14 +53,25 @@ Base: il documento "Siti di aste per fare affari" (circa 95 siti in 18 sezioni).
 | Cardmarket Price Guide | Carte (Pokémon, Magic, Yu-Gi-Oh, One Piece, Lorcana) | File JSON pubblici giornalieri, medie del venduto a 1, 7 e 30 giorni |
 | Spot oro e argento | Oro a peso, sterline, marenghi, lingotti | goldprice.org, con gold-api.com come riserva |
 | Cambi BCE | JPY, USD, GBP, CHF | XML giornaliero BCE |
-| Risultati Affide | Oro e preziosi su pegno | Il "prezzo realizzato" è pubblicato sul lotto e il bot lo legge già |
+| Prezzi richiesti su Chrono24 | Orologi | Mediana degli annunci dello stesso modello, scontata del 12% (sono prezzi chiesti, non venduti) |
+| Venduti di Watch Collecting | Orologi | API Typesense, `listingStage: sold`, con il 10% di commissione aggiunto |
+| **Storico proprio** | Orologi (e tutto ciò che passa da Catawiki) | Il bot rilegge i lotti Catawiki chiusi e salva il prezzo pagato (aggiudicazione + 9% + 3 €). Migliora più a lungo gira. |
+| Risultati Affide | Oro e preziosi su pegno | Il "prezzo realizzato" è pubblicato sul lotto. Il bot lo legge ma **non lo usa ancora** come comparabile: è il prossimo passo. |
 
 ## D. Da aggiungere in seguito (utili, ma serve un browser o lavoro manuale)
 
 - **ProntoPegno / KrusoK**: è un'app a pagina unica (`fe.prontopegno.it`). Bisogna catturarne le chiamate dal browser.
 - **Gobid**: ha aste di gioielli e orologi, ma è dietro Cloudflare, quindi serve Playwright.
 - **IVG / astagiudiziaria.com, Astemobili, Bidinside "lotti invenduti"**: HTML semplice, sono il prossimo connettore.
-- **Chrono24**: prezzi richiesti degli orologi come riferimento. È dietro Cloudflare, quindi serve Playwright.
+- **Altri portali di orologi**:
+  - WatchRecon (aggregatore dei forum: i selettori sono da verificare su una pagina reale)
+  - Uhrforum.de "Angebote" (XenForo, forse con feed RSS)
+  - Orologiko, Orologi per tutti, ForumOrologi (mercatini dei forum italiani)
+  - Leboncoin (DataDome severo)
+  - Loupe This (USA, pochi lotti)
+  - Dorotheum, come prezzi di aggiudicazione: dati `var lots` nelle pagine dei risultati, dietro Cloudflare
+  - Mercari Japan (tramite Buyee)
+  - Rivenditori Shopify (`/products.json`) come prezzi di riferimento dei commercianti
 - **NumisBids, Sixbid**: aste numismatiche, dietro Cloudflare.
 - **Enchères du Domaine**: le vendite di Stato francesi hanno un WAF severo e captcha, e ce ne sono poche all'anno. Meglio l'alert email del sito.
 - **Invaluable, the-saleroom, Barnebys, Auctionet, Dorotheum, Drouot**: altri aggregatori di case d'asta. LiveAuctioneers copre già lo stesso tipo di dato.

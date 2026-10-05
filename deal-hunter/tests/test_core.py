@@ -266,3 +266,77 @@ async def test_harvest_builds_own_sold_history(engine):
     nl = L("Omega Speedmaster Professional 3570.50 Moonwatch", source="subito")
     comps = await ce._own_history(nl, extract(nl))
     assert len(comps) == 1 and comps[0].price_eur == pytest.approx(3436.5) and comps[0].source == "storico_catawiki"
+
+
+# --- portali orologi --------------------------------------------------------------------
+def test_kleinanzeigen_parser():
+    from dealhunter.sources.watches import parse_kleinanzeigen
+
+    ls = parse_kleinanzeigen((FIX / "kleinanzeigen.html").read_text())
+    assert [l.source_id for l in ls] == ["2911111111", "2922222222"]  # niente top-ad né "Alternative Anzeigen"
+    om, rx = ls
+    assert om.price == 2950 and om.country == "DE" and "[trattabile]" in om.description  # prezzo barrato ignorato
+    assert om.url == "https://www.kleinanzeigen.de/s-anzeige/omega-speedmaster-professional-3570-50/2911111111-160-3331"
+    assert rx.raw["pickup_only"] and rx.description.startswith("[SOLO RITIRO IN GERMANIA]")
+
+
+def test_marktplaats_willhaben_ricardo_parsers():
+    from dealhunter.sources.watches import parse_marktplaats, parse_ricardo, parse_willhaben
+
+    m = parse_marktplaats(json.loads((FIX / "marktplaats.json").read_text()))
+    assert len(m) == 1 and m[0].price == 2650 and m[0].country == "NL"
+    assert m[0].url.startswith("https://www.marktplaats.nl/v/") and m[0].images[0].startswith("https://")
+    w = parse_willhaben((FIX / "willhaben.html").read_text())[0]
+    assert w.price == 2900 and w.country == "AT" and w.title.startswith("Cartier Santos")
+    assert w.url == "https://www.willhaben.at/iad/d/kaufen-und-verkaufen/cartier-santos-987654321/"
+    r = parse_ricardo(json.loads((FIX / "ricardo.json").read_text()))
+    assert len(r) == 1 and r[0].currency == "CHF" and r[0].kind == SaleKind.AUCTION and r[0].ends_at.day == 6
+
+
+def test_watchexchange_rss():
+    from dealhunter.sources.watches import parse_watchexchange_rss
+
+    ls = parse_watchexchange_rss((FIX / "watchexchange.rss").read_text())
+    assert [l.source_id for l in ls] == ["1abcdef", "4defghi"]  # niente CONUS, niente WTB
+    tudor, omega = ls
+    assert tudor.price == 3050 and tudor.currency == "USD" and tudor.country == "US"
+    assert tudor.title == "Tudor Black Bay 58 Navy 79030B" and tudor.images == ["https://i.imgur.com/abc.jpg"]
+    assert omega.price == 4200 and omega.currency == "EUR" and omega.country == "EU"
+
+
+def test_watchcollecting_live_and_sold(market):
+    import asyncio
+    from dealhunter.sources import watches
+
+    docs = json.loads((FIX / "watchcollecting.json").read_text())
+    live = watches.parse_watchcollecting(docs[:1])[0]
+    assert live.price == 5200 and live.currency == "GBP" and live.country == "GB" and live.reserve_met is True
+    assert live.url == "https://watchcollecting.com/for-sale/1990-rolex-submariner-16610"
+
+    async def fake_search(http, cfg, cache, q, stage, per_page=100):
+        return docs
+
+    orig = watches.wc_search
+    watches.wc_search = fake_search
+    try:
+        sold = asyncio.run(watches.watchcollecting_sold(None, market, {}, "rolex submariner 16610"))
+    finally:
+        watches.wc_search = orig
+    assert len(sold) == 1  # prezzo nascosto scartato
+    assert sold[0].price_eur == pytest.approx(7000 / 0.85 * 1.10, rel=0.01)  # sterline -> euro + 10% commissione
+
+
+def test_forum_topic_parser():
+    from dealhunter.sources.watches import parse_forum_topic
+
+    l = parse_forum_topic((FIX / "forum_topic.html").read_text(), "123456", "Vendo Rolex Submariner 124060 ITA")
+    assert l.price == 9800 and l.title == "Rolex Submariner 124060 ITA" and l.country == "IT"
+    assert l.images == ["https://upload.forumfree.net/i/ff1/foto1.jpg"]
+    assert parse_forum_topic("<html><body>niente</body></html>", "1", "VENDUTO Rolex") is None
+
+
+def test_all_sources_have_a_profile():
+    from dealhunter.sources import REGISTRY
+
+    for name, cls in REGISTRY.items():
+        assert cls.profile in SOURCE_PROFILES, name

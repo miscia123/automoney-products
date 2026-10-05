@@ -349,7 +349,10 @@ class LiveAuctioneers(Source):
     lang = "en"
 
     async def search(self, query: Query) -> list[Listing]:
-        items = await liveauctioneers_search(self.http, query.text("en"))
+        q = query.foreign_text("en")
+        if not q:
+            return []
+        items = await liveauctioneers_search(self.http, q)
         out = []
         for it in items:
             price = it.get("leadingBid") or it.get("startPrice") or it.get("lowBidEstimate")
@@ -401,7 +404,9 @@ class Buyee(Source):
     needs_browser = True
 
     async def search(self, query: Query) -> list[Listing]:
-        q = quote(query.text("ja"), safe="")
+        if not query.foreign_text("ja"):
+            return []
+        q = quote(query.foreign_text("ja"), safe="")
         params = "sort=end&order=d&translationType=98"  # ultimi inseriti
         if query.min_price:
             params += f"&aucminprice={int(query.min_price * 160)}"

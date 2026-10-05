@@ -37,6 +37,25 @@ SOURCE_PROFILES: dict[str, dict[str, Any]] = {
                      protection="vendita giudiziaria: nessuna garanzia per vizi (art. 2922 c.c.)"),
     "liveauctioneers": dict(premium=0.28, fixed_fee=0, vat_on_premium=False, shipping=60, country="US",
                             base_risk=25, seller="business", protection="casa d'asta; leggi le condizioni"),
+    "kleinanzeigen": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=25, country="DE",
+                          base_risk=38, seller="private",
+                          protection="nessuna tutela fuori dalla Germania: PayPal Beni e servizi o ritiro di persona"),
+    "marktplaats": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=25, country="NL",
+                        base_risk=38, seller="private", protection="tra privati: PayPal Beni e servizi o ritiro"),
+    "willhaben": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=20, country="AT",
+                      base_risk=38, seller="private", protection="PayLivery solo in Austria"),
+    "ricardo": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=30, country="CH",
+                    base_risk=28, seller="mixed",
+                    protection="molti venditori spediscono solo in Svizzera; all'import IVA 22%"),
+    "watchexchange": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=60, country="US",
+                          base_risk=30, seller="private",
+                          protection="comunità con storico delle transazioni; PayPal Beni e servizi"),
+    "watchcollecting": dict(premium=0.10, fixed_fee=0, vat_on_premium=True, shipping=40, country="GB",
+                            base_risk=18, seller="mixed",
+                            protection="casa d'aste curata; commissione 10% + IVA (minimo alto sui lotti economici)"),
+    "forum": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=15, country="IT",
+                  base_risk=28, seller="private",
+                  protection="reputazione del forum; chiedi feedback e paga tracciato"),
     "chrono24": dict(premium=0.0, fixed_fee=0, vat_on_premium=False, shipping=0, country="EU",
                      base_risk=18, seller="mixed", protection="pagamento fiduciario Chrono24"),
 }
@@ -79,6 +98,7 @@ DEFAULTS: dict[str, Any] = {
         "max_per_query": 40,
         "chrono24": True,  # prezzi richiesti come riferimento (se la sorgente chrono24 è attiva)
         "own_history": True,  # esiti delle aste chiuse riletti dal bot
+        "watchcollecting": True,  # archivio venduti di watchcollecting.com (orologi)
     },
     "evaluation": {
         "reeval_hours": 12,
@@ -118,6 +138,13 @@ DEFAULTS: dict[str, Any] = {
         "liveauctioneers": {"enabled": False, "interval": 240},
         "chrono24": {"enabled": False, "interval": 60},  # richiede Playwright (Cloudflare)
         "wallapop": {"enabled": False, "interval": 20},
+        "kleinanzeigen": {"enabled": True, "interval": 20},
+        "marktplaats": {"enabled": True, "interval": 30},
+        "willhaben": {"enabled": True, "interval": 30},
+        "ricardo": {"enabled": False, "interval": 60},
+        "watchexchange": {"enabled": True, "interval": 15},
+        "watchcollecting": {"enabled": True, "interval": 60},
+        "orologipassioni": {"enabled": True, "interval": 60},
     },
     "http": {
         "default": {"concurrency": 2, "min_interval": 1.5},
@@ -130,6 +157,13 @@ DEFAULTS: dict[str, Any] = {
             "zoll-auktion.de": {"concurrency": 2, "min_interval": 1.5},
             "buyee.jp": {"concurrency": 2, "min_interval": 2.0},
             "chrono24.it": {"concurrency": 1, "min_interval": 3.5},
+            "kleinanzeigen.de": {"concurrency": 1, "min_interval": 5.0},
+            "reddit.com": {"concurrency": 1, "min_interval": 30.0},
+            "marktplaats.nl": {"concurrency": 1, "min_interval": 2.0},
+            "2dehands.be": {"concurrency": 1, "min_interval": 2.0},
+            "willhaben.at": {"concurrency": 1, "min_interval": 2.5},
+            "ricardo.ch": {"concurrency": 1, "min_interval": 2.0},
+            "forumfree.it": {"concurrency": 1, "min_interval": 2.0},
         },
     },
 }

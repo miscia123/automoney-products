@@ -1,10 +1,10 @@
 # DealHunter
 
-Bot che controlla di continuo aste e marketplace (Subito, eBay, Vinted, Wallapop, Catawiki, Affide, Zoll-Auktion e le vendite giudiziarie) in cerca di affari su **oro, orologi, gioielli, monete, borse e carte**. Ogni prezzo viene **verificato sui venduti reali**, e quando trova un grande affare ti scrive su Telegram.
+Bot che controlla di continuo aste e marketplace (Subito, eBay, Vinted, Wallapop, Catawiki, Affide, Zoll-Auktion e le vendite giudiziarie, più i portali di orologi: Chrono24, Kleinanzeigen, Marktplaats/2dehands, Willhaben, Reddit r/Watchexchange, Watch Collecting e il mercatino di Orologi & Passioni) in cerca di affari su **oro, orologi, gioielli, monete, borse e carte**. Ogni prezzo viene **verificato sui venduti reali**, e quando trova un grande affare ti scrive su Telegram.
 
 Per ogni annuncio calcola:
 
-- **Valore di mercato**: mediana dei venduti comparabili su eBay.it, eBay.de, l'archivio LiveAuctioneers e Cardmarket, oppure il valore del metallo fino (peso × titolo × spot) per oro e monete.
+- **Valore di mercato**: mediana dei venduti comparabili su eBay.it, eBay.de, l'archivio LiveAuctioneers, Watch Collecting, Cardmarket e lo storico delle aste Catawiki chiuse (più i prezzi richiesti su Chrono24 come riferimento per gli orologi), oppure il valore del metallo fino (peso × titolo × spot) per oro e monete.
 - **Costo finale in mano**: prezzo, diritti d'asta, IVA sui diritti, spedizione, e per gli acquisti extra UE dazi, IVA all'import e sdoganamento.
 - **Costo delle riparazioni** per gli oggetti da revisionare o non funzionanti, in base a marca e fascia.
 - **Incasso netto alla rivendita** sul canale giusto: Chrono24, Catawiki, compro oro, Cardmarket o Vestiaire, al netto delle commissioni.
@@ -22,6 +22,8 @@ La scelta dei siti, con le motivazioni, è in [docs/SELEZIONE_SITI.md](docs/SELE
  sorgenti (in parallelo, ciascuna col suo intervallo)
    Subito 10' · Vinted 15' · eBay 15' · Wallapop 20' · Catawiki 30'
    Zoll 1h · Affide 3h · PVP/Astegiudiziarie/Fallcoaste 6h
+   orologi: r/Watchexchange 15' · Kleinanzeigen 20' · Marktplaats/Willhaben 30'
+            Chrono24 · Watch Collecting · Orologi & Passioni 1h
         │  solo annunci nuovi o con prezzo cambiato (SQLite)
         ▼
  estrazione a regole (marca, modello, referenza, grammi, carati, difetti, parole da falso)
@@ -68,6 +70,8 @@ Con Docker: `docker compose up -d` (legge `.env` e `config/`, il database va in 
 1. Scrivi a @BotFather, crea un bot e copia il token.
 2. Manda un messaggio qualsiasi al tuo bot.
 3. Apri `https://api.telegram.org/bot<TOKEN>/getUpdates` e copia `chat.id`.
+
+**Chrono24 e Buyee** rispondono solo a un browser vero (Cloudflare e simili). Installa Playwright una volta con `pip install playwright && playwright install chromium`. Senza, il bot salta queste due sorgenti e lo scrive nel log. Lo stesso vale per qualsiasi sorgente che inizi a rispondere 403: aggiungi `use_browser: true` nella sua configurazione.
 
 **Buyee (Giappone).** Serve un browser vero: `pip install playwright && playwright install chromium`, poi `buyee: {enabled: true}`. Su un server senza schermo lancia il bot con `xvfb-run dealhunter daemon`.
 
