@@ -149,6 +149,21 @@ class DB:
     def seen(self, key: str) -> bool:
         return self.conn.execute("SELECT 1 FROM listings WHERE key=?", (key,)).fetchone() is not None
 
+    ASK_SOURCES = ("subito", "vinted", "wallapop", "chrono24", "kleinanzeigen", "marktplaats", "willhaben",
+                   "watchexchange", "orologipassioni")
+
+    def asks_like(self, patterns: list[str], exclude_key: str, days: int = 30, limit: int = 80) -> list[sqlite3.Row]:
+        """Prezzi richiesti dello stesso oggetto (stessa referenza, o marca + modello) sugli altri marketplace."""
+        if not patterns:
+            return []
+        where = " AND ".join("lower(title) LIKE ?" for _ in patterns)
+        q = (f"SELECT key, source, title, url, price, currency FROM listings WHERE {where}"
+             f" AND key != ? AND price > 0 AND last_seen > ? AND source IN ({','.join('?' * len(self.ASK_SOURCES))})"
+             " ORDER BY last_seen DESC LIMIT ?")
+        params = [f"%{p.lower()}%" for p in patterns] + [exclude_key, time.time() - days * 86400,
+                                                         *self.ASK_SOURCES, limit]
+        return self.conn.execute(q, params).fetchall()
+
     def has_any(self, source: str) -> bool:
         return self.conn.execute("SELECT 1 FROM listings WHERE source=? LIMIT 1", (source,)).fetchone() is not None
 

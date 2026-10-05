@@ -126,6 +126,9 @@ def _parse_browse(it: dict) -> Listing | None:
 def _check_challenge(html: str) -> None:
     if "/splashui/challenge" in html or "/splashui/captcha" in html or "Pardon Our Interruption" in html:
         raise BlockedError("ebay", 200, "challenge Akamai")
+    head = html[:3000]
+    if re.search(r"<title>[^<]*(Accedi o registrati|Sign in or register|Einloggen|Anmelden)[^<]*</title>", head, re.I):
+        raise BlockedError("ebay", 200, "eBay chiede l'accesso: ricerca dei venduti bloccata da questa rete")
 
 
 def iter_cards(html: str):

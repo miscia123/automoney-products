@@ -206,11 +206,9 @@ class Catawiki(Source):
     profile = "catawiki"
 
     async def search(self, query: Query, page: int = 1) -> list[Listing]:
+        # i filtri di categoria e budget nell'URL davano "nessuna corrispondenza" (scan del 5/10/2026):
+        # si cerca solo per testo e il filtro sul prezzo lo fa il motore
         filters = ["bidding_end_days[]=1"] if self.cfg.get("ending_today_only") else []
-        if query.category in CATAWIKI_CATS:
-            filters.append(f"l2_categories[]={CATAWIKI_CATS[query.category]}")
-        if query.max_price:
-            filters.append(f"budget[]=0-{int(query.max_price)}")
         params = {"q": query.text("it"), "sort": "bidding_end_asc"}
         if filters:
             params["filters"] = "&".join(filters)

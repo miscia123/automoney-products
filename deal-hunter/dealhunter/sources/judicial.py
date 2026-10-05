@@ -29,7 +29,7 @@ FALLCOASTE_CATS = ["/categoria/orologi-e-gioielli-245.html", "/categoria/prezios
 
 PRECIOUS_RE = re.compile(
     r"\boro\b|orolog|rolex|omega|cartier|patek|gioiell|brillant|diamant|preziosi|anello|bracciale|collana|"
-    r"sterlin|marengh|lingott|moneta|monete|argento|dipint|quadro|opera d.arte|scultur|borsa|herm[eè]s|chanel",
+    r"sterlin|marengh|lingott|moneta|monete|argento|dipint|olio su tela|opera d.arte|scultur|borsa|herm[eè]s|chanel",
     re.I,
 )
 
@@ -181,5 +181,4 @@ def parse_fallcoaste_lot(html: str, url: str, sid: str) -> Listing | None:
         source="judicial", source_id=sid, url=url, title=title, description=desc,
         price=price, kind=SaleKind.AUCTION, ends_at=end, seller_type=SellerType.INSTITUTION,
         country="IT", images=[img.attributes["content"]] if img and img.attributes.get("content") else [],
-        category_hint=Category.JEWELRY,
     )

@@ -94,6 +94,10 @@ class Http:
         # una pagina "andata a buon fine" non ha dato annunci (selettori cambiati, blocchi)
         self.debug = os.environ.get("DEALHUNTER_DEBUG_HTTP") == "1"
         self.last: dict[str, dict] = {}
+        # campioni HTML completi per gli host indicati (DEALHUNTER_DUMP_HOSTS=kleinanzeigen,affide):
+        # servono a riscrivere un connettore sulla pagina vera
+        self.dump_hosts = [h for h in os.environ.get("DEALHUNTER_DUMP_HOSTS", "").split(",") if h]
+        self.dumps: dict[str, list[tuple[str, str]]] = {}
 
     async def __aenter__(self) -> "Http":
         self._session = AsyncSession(
@@ -155,6 +159,8 @@ class Http:
                 else:
                     if self.debug:
                         self._remember(url, resp)
+                    if self.dump_hosts:
+                        self._dump(url, resp)
                     return resp
             if attempt < retries:
                 delay = (2**attempt) + random.uniform(0, 1)
@@ -162,6 +168,16 @@ class Http:
                 await asyncio.sleep(delay)
         assert last is not None
         raise last
+
+    def _dump(self, url: str, resp) -> None:
+        host = urlparse(url).hostname or ""
+        key = next((k for k in self.dump_hosts if k in host), None)
+        if key and len(self.dumps.setdefault(key, [])) < self.dump_per_host(key):
+            self.dumps[key].append((str(resp.url), (resp.text or "")[:600_000]))
+
+    @staticmethod
+    def dump_per_host(key: str) -> int:
+        return 4
 
     def _remember(self, url: str, resp) -> None:
         self.last[urlparse(url).hostname or ""] = summarize(str(resp.url), resp.status_code, resp.text or "",

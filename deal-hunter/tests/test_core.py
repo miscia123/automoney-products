@@ -444,3 +444,23 @@ async def test_dashboard_api(tmp_path):
     out = export_snapshot(cfg, str(tmp_path / "snap.html"), demo=True)
     html = Path(out).read_text()
     assert "window.__DH_SNAPSHOT__" in html and "<!doctype" not in html.lower()
+
+
+async def test_market_asks_index_values_underpriced_watch(engine):
+    """Senza venduti raggiungibili, i prezzi richiesti della stessa referenza altrove fanno da riferimento."""
+    from dealhunter.comps import CompsEngine
+
+    for i, p in enumerate([10400, 10900, 10600, 11200, 10800, 10500, 11000, 10700, 10900, 10600, 10750, 10850]):
+        other = Listing(source=["subito", "marktplaats", "willhaben", "vinted"][i % 4], source_id=f"o{i}",
+                        url=f"https://x/{i}", title=f"Rolex Submariner Date 116610LN full set #{i}", price=p)
+        engine.db.needs_eval(other, 0)
+    ce = CompsEngine(http=None, db=engine.db, market=engine.market,
+                     cfg={"ebay_domains": [], "liveauctioneers": False, "watchcollecting": False, "own_history": False})
+    engine.comps = ce
+    l = L("Rolex Submariner Date 116610LN 2014 scatola e garanzia", 7200, images=["https://a.jpg"],
+          desc="Venduto per cambio auto, revisionato nel 2024, visionabile a Bologna.")
+    engine.db.needs_eval(l, 0)
+    d = await engine.evaluate(l)
+    assert d is not None and all(c.source.startswith("mercato_") and c.kind == "ask" for c in d.valuation.comps)
+    assert 9000 < d.valuation.fair_value < 10000  # mediana richiesta ~10.750 scontata del 12%
+    assert d.profit > 1000 and d.level in ("good", "watch")

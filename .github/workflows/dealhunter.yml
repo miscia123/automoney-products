@@ -18,12 +18,14 @@ jobs:
   scan:
     if: github.event_name != 'push' || contains(github.event.head_commit.message, '[scan]')
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: deal-hunter
     env:
       DEALHUNTER_DEBUG_HTTP: "1"
+      # campioni HTML nei log per le fonti il cui connettore va adattato alla pagina vera
+      DEALHUNTER_DUMP_HOSTS: ${{ vars.DEALHUNTER_DUMP_HOSTS || 'kleinanzeigen,affide,zoll-auktion,forumfree,fallcoaste' }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -41,7 +43,7 @@ jobs:
           key: dealhunter-db-${{ github.run_id }}
           restore-keys: dealhunter-db-
       - name: Scansione completa
-        run: xvfb-run -a timeout -s INT 40m dealhunter -c config/ci-scan.yaml run --force || echo "scansione terminata con codice $?"
+        run: xvfb-run -a timeout -s INT 55m dealhunter -c config/ci-scan.yaml run --force || echo "scansione terminata con codice $?"
       - name: Stato delle fonti
         if: always()
         run: dealhunter -c config/ci-scan.yaml status

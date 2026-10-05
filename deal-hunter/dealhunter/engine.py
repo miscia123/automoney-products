@@ -144,7 +144,8 @@ class Engine:
         """Pagina 1 sempre; le successive solo se la pagina era piena e TUTTA di annunci mai visti:
         vuol dire che dall'ultimo giro ne sono arrivati più di una pagina e senza continuare li perderemmo."""
         max_pages = self.cfg["evaluation"].get("max_pages", 5) if src.paged else 1
-        if not self.db.has_any(src.name):
+        baseline = not self.db.has_any(src.name)
+        if baseline:
             max_pages = 1  # primo giro in assoluto: si parte dalla prima pagina, il resto è storico
         out: list[Listing] = []
         for page in range(1, max_pages + 1):
@@ -152,7 +153,7 @@ class Engine:
             out += got
             full = src.page_size and len(got) >= src.page_size * 0.8
             all_new = bool(got) and not any(self.db.seen(l.key) for l in got)
-            if not (full and all_new):
+            if not (full and all_new) or baseline:
                 break
             if page == max_pages:
                 stats["capped"] += 1  # ancora tutto nuovo all'ultima pagina: segnalato in copertura
@@ -407,7 +408,23 @@ class Engine:
                              error=None)
         self.progress[name] = {"state": "idle", "finished": time.time(), "listings": len(listings),
                                "new": new_count, "deals": sum(d.level in ("hot", "good") for d in deals)}
+        self._print_dumps()  # campioni di diagnostica (solo se richiesti), stampati appena la fonte finisce
         return deals
+
+    def _print_dumps(self) -> None:
+        """Stampa i campioni HTML raccolti (compressi) per poterli leggere dai log della CI."""
+        import base64
+        import gzip
+
+        dumps = getattr(self.http, "dumps", None) or {}
+        for key, pages in dumps.items():
+            for i, (url, text) in enumerate(pages):
+                blob = base64.b64encode(gzip.compress(text.encode("utf-8", "replace"))).decode()
+                print(f"===DUMP {key} {i} {url}===")
+                for j in range(0, len(blob), 2000):
+                    print(blob[j:j + 2000])
+                print("===DUMP-END===", flush=True)
+        dumps.clear()
 
     async def harvest_results(self, per_source: int = 30) -> int:
         """Rilegge le aste chiuse e salva i prezzi realmente pagati: diventano comparabili."""
@@ -453,6 +470,7 @@ class Engine:
                 f"{k} {v['ok']} ok/{v['empty']} vuote/{v['error']} errori" for k, v in sorted(self.comps.stats.items())))
         await self.harvest_results()
         await self.maybe_digest()
+        self._print_dumps()
         return [d for r in results for d in r]
 
     async def daemon(self, tick_s: int = 60) -> None:

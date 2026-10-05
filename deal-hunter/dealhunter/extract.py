@@ -124,7 +124,8 @@ CARD_WORDS = re.compile(
     re.I,
 )
 WINE_WORDS = re.compile(r"\bvino\b|bottigli|\bwine\b|barolo|brunello|sassicaia|romanée|petrus|champagne|whisky|cognac", re.I)
-ART_WORDS = re.compile(r"dipinto|quadro|olio su tela|litografia|serigrafia|scultura|acquerello|painting|lithograph", re.I)
+ART_WORDS = re.compile(r"dipinto|olio su tela|olio su tavola|quadro\s+(d.autore|firmato|antico|ad olio|olio)|litografia|"
+                       r"serigrafia|scultura|acquerello|painting|lithograph", re.I)
 GOLD_WORDS = re.compile(r"\boro\b|\bgold\b|\bgolden\b|\bgelbgold|weißgold|rotgold|\bor\s+(jaune|blanc|rose)", re.I)
 SILVER_WORDS = re.compile(r"argento|\bsilver\b|silber|\bargent\b", re.I)
 BAR_WORDS = re.compile(r"lingott|lingotin|\bbarr?a\b|\bbar\b|barren|gold\s*bar", re.I)
