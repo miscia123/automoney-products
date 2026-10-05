@@ -155,6 +155,8 @@ DEFAULTS: dict[str, Any] = {
             "vinted.it": {"concurrency": 1, "min_interval": 3.0},
             "catawiki.com": {"concurrency": 2, "min_interval": 2.0},
             "zoll-auktion.de": {"concurrency": 2, "min_interval": 1.5},
+            "affide.it": {"concurrency": 1, "min_interval": 4.0},
+            "fallcoaste.it": {"concurrency": 1, "min_interval": 2.0},
             "buyee.jp": {"concurrency": 2, "min_interval": 2.0},
             "chrono24.it": {"concurrency": 1, "min_interval": 3.5},
             "kleinanzeigen.de": {"concurrency": 1, "min_interval": 5.0},

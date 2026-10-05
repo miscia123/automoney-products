@@ -564,3 +564,17 @@ def test_bullion_false_positives_from_live_scan():
     spam = x("+++ TOP MÜNZE +++ 3 Oz Unzen PP Silber Gold Goldbarren Philharmoniker Eagle Krügerrand Maple Leaf", country="AT")
     assert "keyword_spam" in spam.flags
     assert x("Sterline e marenghi in oro").bullion_name.startswith("marengo")
+
+
+def test_eval_version_resets_old_valuations(engine):
+    from dealhunter.engine import EVAL_VERSION
+
+    l = L("Krugerrand 1/2 oz goud", 2000, source="marktplaats")
+    engine.db.needs_eval(l, 0)
+    engine.db.conn.execute("UPDATE listings SET last_eval=?, last_level='hot', deal_json='{}' WHERE key=?",
+                           (1e12, l.key))
+    engine.db.kv_set("eval_version", "vecchia")
+    engine._check_eval_version()
+    row = engine.db.conn.execute("SELECT last_eval, last_level, deal_json FROM listings WHERE key=?", (l.key,)).fetchone()
+    assert tuple(row) == (None, None, None) and engine.db.kv_get("eval_version") == EVAL_VERSION
+    assert engine.db.needs_eval(l, 3600)  # al prossimo giro viene rivalutato

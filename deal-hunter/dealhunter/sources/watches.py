@@ -391,12 +391,17 @@ async def wc_search(http, cfg: dict, cache: dict, q: str, stage: str, per_page: 
     site = cfg.get("site_filter", "watches")
     body = {"searches": [{
         "collection": "production_listings", "q": q, "query_by": "title",
-        "filter_by": f"sites:={site} && listingStage:={stage}",
-        "sort_by": "dtStageEndsUTC:asc" if stage == "live" else "dtSoldUTC:desc",
+        # nel 2026 i lotti chiusi non hanno più dtSoldUTC: si ordina per fine asta
+        "filter_by": f"sites:={site} && listingStage:={stage}" if stage == "live"
+                     else f"sites:={site} && listingStage:=[sold,ended,past,completed]",
+        "sort_by": "dtStageEndsUTC:asc" if stage == "live" else "dtStageEndsUTC:desc",
+        "exclude_fields": "embedding,embeddingPriceBand",
         "per_page": per_page, "page": 1}]}
     data = await http.post_json(WC_API, body, headers={"X-TYPESENSE-API-KEY": key, "Origin": WC_SITE,
                                                        "Referer": WC_SITE + "/"})
     res = (data.get("results") or [{}])[0]
+    if res.get("error"):
+        raise RuntimeError(f"Watch Collecting: {res.get('error')}")
     return [h.get("document", {}) for h in res.get("hits", [])]
 
 
@@ -440,10 +445,11 @@ async def watchcollecting_sold(http, market, cfg: dict, q: str) -> list[Comparab
     for d in docs:
         if d.get("isSoldPriceHidden") or not d.get("priceSold"):
             continue
-        eur = market.to_eur(float(d["priceSold"]), d.get("currencyCode", "GBP"))
+        eur = d.get("priceNormalisedEUR") if d.get("currentBid") == d.get("priceSold") else None
+        eur = eur or market.to_eur(float(d["priceSold"]), d.get("currencyCode", "GBP"))
         out.append(Comparable(price_eur=round(eur * 1.10, 2), title=d.get("title", ""),  # + 10% commissione acquirente
                               source="watchcollecting_sold", kind="sold",
-                              url=f"{WC_SITE}/for-sale/{d.get('slug')}", sold_at=_iso(d.get("dtSoldUTC"))))
+                              url=f"{WC_SITE}/for-sale/{d.get('slug')}", sold_at=_iso(d.get("dtSoldUTC") or d.get("dtStageEndsUTC"))))
     return out
 
 

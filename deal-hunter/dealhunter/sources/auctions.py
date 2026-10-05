@@ -356,15 +356,48 @@ def parse_catawiki_search(html: str) -> list[dict]:
 LA_SEARCH = "https://search-party-prod.liveauctioneers.com/search/v4/web"
 
 
-async def liveauctioneers_search(http, term: str, status: str = "online", page_size: int = 48) -> list[dict]:
-    params = {"page": 1, "pageSize": page_size, "searchTerm": term,
-              "sort": "-saleStart" if status == "archive" else "-publishDate", "status": status}
+# varianti dei parametri per l'archivio: nel 2026 "status: archive" con sort -saleStart cade sull'indice LIVE.
+# Si provano in ordine e si tiene la prima che risponde dall'archivio (usedIndex diverso da LIVE o venduti > 0).
+LA_ARCHIVE_VARIANTS = [
+    {"status": "archive"},
+    {"status": "archive", "sort": "-relevance"},
+    {"status": "sold"},
+    {"status": "archive", "pastOnly": True},
+    {"status": "past"},
+]
+_la_archive = {"variant": None, "tried": False}
+
+
+async def _la_get(http, params: dict) -> dict:
     data = await http.get_json(
         LA_SEARCH,
         params={"parameters": json.dumps(params, separators=(",", ":")), "useAuctionHouseSearchFiltering": "true"},
         headers={"Origin": "https://www.liveauctioneers.com", "Referer": "https://www.liveauctioneers.com/"},
     )
-    return ((data.get("payload") or {}).get("items")) or []
+    return data.get("payload") or {}
+
+
+async def liveauctioneers_search(http, term: str, status: str = "online", page_size: int = 48) -> list[dict]:
+    base = {"page": 1, "pageSize": page_size, "searchTerm": term}
+    if status != "archive":
+        return (await _la_get(http, {**base, "sort": "-publishDate", "status": status})).get("items") or []
+    variants = [_la_archive["variant"]] if _la_archive["variant"] else \
+        ([] if _la_archive["tried"] else LA_ARCHIVE_VARIANTS)
+    for v in variants:
+        p = await _la_get(http, {**base, **v})
+        items = p.get("items") or []
+        sold = [it for it in items if it.get("isSold") or it.get("salePrice")]
+        if p.get("usedIndex") not in (None, "LIVE") or p.get("totalSold") or sold:
+            if _la_archive["variant"] != v:
+                log.info("LiveAuctioneers: archivio dei venduti raggiunto con %s", v)
+            _la_archive["variant"] = v
+            return sold
+        if _la_archive["variant"]:
+            return []  # variante buona, semplicemente nessun venduto per questa ricerca
+    if not _la_archive["tried"]:
+        _la_archive["tried"] = True
+        log.warning("LiveAuctioneers: nessuna variante raggiunge l'archivio dei venduti (risponde solo l'indice LIVE)")
+    return []
 
 
 class LiveAuctioneers(Source):

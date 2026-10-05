@@ -31,6 +31,10 @@ log = logging.getLogger(__name__)
 
 # quanto della distanza tra offerta attuale e valore si "mangia" la concorrenza prima della fine
 # (prudente: sulle aste online molto seguite il prezzo finale arriva vicino al valore)
+# da cambiare quando cambia la logica di estrazione o di valutazione: al giro successivo tutto viene
+# rivalutato e le valutazioni vecchie (magari sbagliate) spariscono dalla dashboard
+EVAL_VERSION = "2026-10-05.2"
+
 AUCTION_COMPETITION = {"catawiki": 0.8, "ebay": 0.75, "zoll": 0.7, "affide": 0.7, "judicial": 0.3,
                        "buyee": 0.7, "liveauctioneers": 0.7, "watchcollecting": 0.8, "ricardo": 0.7}
 
@@ -477,8 +481,17 @@ class Engine:
                 out.append(name)
         return out
 
+    def _check_eval_version(self) -> None:
+        if self.db.kv_get("eval_version") != EVAL_VERSION:
+            n = self.db.conn.execute("UPDATE listings SET last_eval=NULL, last_level=NULL, deal_json=NULL").rowcount
+            self.db.conn.commit()
+            self.db.kv_set("eval_version", EVAL_VERSION)
+            if n:
+                log.info("logica di valutazione aggiornata (%s): %d annunci verranno rivalutati", EVAL_VERSION, n)
+
     async def run_once(self, only: list[str] | None = None, force: bool = False) -> list[Deal]:
         self.llm_calls = 0
+        self._check_eval_version()
         await self.market.refresh()
         names = only or (list(self.sources) if force else self.due_sources())
         names = [n for n in names if n in self.sources]
