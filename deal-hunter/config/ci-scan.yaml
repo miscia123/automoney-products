@@ -1,0 +1,15 @@
+# Configurazione per la scansione su GitHub Actions (collaudo dal vivo dei connettori).
+# Niente notifiche né perito AI; Chrono24 solo come sorgente, non come prezzo di riferimento
+# (passa dal browser ed è lento: per un collaudo bastano i venduti eBay e gli altri).
+db_path: data/dealhunter.sqlite
+watchlist: config/watchlist.yaml
+log_level: INFO
+llm: {enabled: false}
+alerts:
+  telegram: {enabled: false}
+  digest_hour: null
+comps:
+  chrono24: false
+evaluation:
+  concurrency: 8
+  max_pages: 3

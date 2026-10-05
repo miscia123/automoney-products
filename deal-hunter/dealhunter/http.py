@@ -90,6 +90,10 @@ class Http:
         self.timeout = timeout
         self.impersonate = impersonate
         self._session: AsyncSession | None = None
+        # diagnostica: ultima risposta per host (DEALHUNTER_DEBUG_HTTP=1), per capire perché
+        # una pagina "andata a buon fine" non ha dato annunci (selettori cambiati, blocchi)
+        self.debug = os.environ.get("DEALHUNTER_DEBUG_HTTP") == "1"
+        self.last: dict[str, dict] = {}
 
     async def __aenter__(self) -> "Http":
         self._session = AsyncSession(
@@ -149,6 +153,8 @@ class Http:
                 elif resp.status_code >= 400:
                     raise FetchError(url, resp.status_code)
                 else:
+                    if self.debug:
+                        self._remember(url, resp)
                     return resp
             if attempt < retries:
                 delay = (2**attempt) + random.uniform(0, 1)
@@ -156,6 +162,10 @@ class Http:
                 await asyncio.sleep(delay)
         assert last is not None
         raise last
+
+    def _remember(self, url: str, resp) -> None:
+        self.last[urlparse(url).hostname or ""] = summarize(str(resp.url), resp.status_code, resp.text or "",
+                                                            resp.headers.get("content-type", ""))
 
     async def get_text(self, url: str, **kw) -> str:
         return (await self.request("GET", url, **kw)).text
@@ -169,6 +179,24 @@ class Http:
     def cookies(self):
         assert self._session is not None
         return self._session.cookies
+
+
+def summarize(url: str, status: int, text: str, ctype: str) -> dict:
+    """Riassunto di una risposta per i log di diagnostica."""
+    import re
+
+    title = re.search(r"<title[^>]*>(.*?)</title>", text, re.S | re.I)
+    body = re.sub(r"<script.*?</script>|<style.*?</style>", " ", text, flags=re.S | re.I)
+    body = re.sub(r"<[^>]+>", " ", body)
+    body = re.sub(r"\s+", " ", body).strip()
+    return {
+        "url": url[:300], "status": status, "bytes": len(text), "type": ctype,
+        "title": (title.group(1).strip()[:120] if title else ""),
+        "head": (text[:700] if "json" in ctype or "xml" in ctype else body[:700]),
+        "markers": {m: text.count(m) for m in ("aditem", "s-item", "s-card", "itemCard", "js-listing-item",
+                                              "__NEXT_DATA__", "/vendita/", "lot-229", "/auktion/", "--id",
+                                              "<entry", "?t=") if m in text},
+    }
 
 
 def _looks_blocked(resp) -> bool:

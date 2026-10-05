@@ -21,6 +21,7 @@ def main(argv: list[str] | None = None) -> None:
     d = sub.add_parser("daemon", help="processo sempre attivo con intervalli per sorgente")
     d.add_argument("--tick", type=int, default=60)
     sub.add_parser("doctor", help="prova ogni sorgente e ogni fonte di prezzi venduti")
+    sub.add_parser("status", help="stato di ogni fonte dopo l'ultimo giro (copertura, errori)")
     rep = sub.add_parser("report", help="migliori affari recenti")
     rep.add_argument("--hours", type=float, default=24)
     rep.add_argument("--json", action="store_true")
@@ -61,6 +62,23 @@ async def _dispatch(args, cfg) -> None:
         print("scritta", export_snapshot(cfg, args.out, args.hours, demo=args.demo))
         return
 
+    if args.cmd == "status":
+        from .db import DB
+
+        db = DB(cfg["db_path"])
+        health = {h["source"]: h for h in db.health()}
+        for name, scfg in cfg["sources"].items():
+            if not scfg.get("enabled"):
+                continue
+            h, cov = health.get(name, {}), (db.coverage(name, 1) or [{}])[0]
+            state = "MAI" if not h else "ERRORE" if (h.get("consecutive_errors") or 0) else "OK"
+            print(f"{state:6} {name:16} letti {cov.get('listings', '-')!s:>5}  nuovi {cov.get('new_listings', '-')!s:>5}  "
+                  f"ricerche {cov.get('queries', '-')!s:>3} (errori {cov.get('query_errors', '-')!s})  "
+                  f"durata {cov.get('duration_s', '-')}s  {(h.get('last_error_msg') or '')[:150] if state == 'ERRORE' else ''}")
+        c = db.counts(86400)
+        print(f"\n24h: {c['n']} annunci, {c['hot']} grandi affari, {c['good']} buoni, {c['watch']} da seguire, "
+              f"{c['unvalued']} da verificare")
+        return
     if args.cmd == "report":
         from .db import DB
 

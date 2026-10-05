@@ -52,6 +52,8 @@ class CompsEngine:
         self._cardmarket: dict[int, tuple[list[dict], dict[int, dict]]] = {}
         self.errors: dict[str, str] = {}
         self.browser = None  # impostato dal motore se Chrono24 è attivo
+        self.stats: dict[str, dict[str, int]] = {}  # per fonte di prezzi: risposte piene, vuote, errori
+        self._zero_logged: set[str] = set()
 
     async def get(self, listing: Listing, attrs: Attributes) -> list[Comparable]:
         if attrs.category == Category.GOLD and not attrs.brand:
@@ -59,23 +61,41 @@ class CompsEngine:
         q = attrs.query_text.strip()
         if len(q.split()) < 2 and attrs.category not in (Category.BULLION_COIN,):
             return CompsResult()
-        tasks = []
+        tasks, labels = [], []
         for dom in self.cfg.get("ebay_domains", ["ebay.it"]):
             tasks.append(self._cached(f"{dom}:{q}", lambda d=dom: ebay_sold(self.http, q, d)))
+            labels.append(dom)
         if attrs.category in LA_CATEGORIES and self.cfg.get("liveauctioneers", True):
             tasks.append(self._cached(f"la:{q}", lambda: liveauctioneers_sold(self.http, self.market, q)))
+            labels.append("liveauctioneers")
         if attrs.category == Category.WATCH and self.browser is not None:
             tasks.append(self._cached(f"c24:{q}", lambda: chrono24_asks(self.browser, self.market, q)))
+            labels.append("chrono24")
         if attrs.category == Category.WATCH and self.cfg.get("watchcollecting", True):
             tasks.append(self._cached(f"wc:{q}", lambda: watchcollecting_sold(
                 self.http, self.market, self.cfg.get("watchcollecting_cfg") or {}, q)))
+            labels.append("collecting")
         if attrs.category == Category.WATCH and self.cfg.get("own_history", True):
             tasks.append(self._own_history(listing, attrs))
+            labels.append("storico")
         if attrs.category == Category.CARD and self.cfg.get("cardmarket", True):
             tasks.append(self._cardmarket_comps(listing, attrs))
+            labels.append("cardmarket")
         results = await asyncio.gather(*tasks, return_exceptions=True)
         comps: list[Comparable] = []
         errors: list[str] = []
+        for label, r in zip(labels, results):
+            self.stats.setdefault(label, {"ok": 0, "empty": 0, "error": 0})
+            if isinstance(r, Exception):
+                self.stats[label]["error"] += 1
+            else:
+                self.stats[label]["ok" if r else "empty"] += 1
+                if not r and label not in self._zero_logged and label != "storico":
+                    self._zero_logged.add(label)
+                    d = next((v for h, v in (getattr(self.http, "last", None) or {}).items() if label.split(".")[0] in h), None)
+                    if d:
+                        log.warning("venduti %s per %r: 0 risultati | %s %sB | titolo=%r | segni=%s | inizio=%r",
+                                    label, q, d["status"], d["bytes"], d["title"], d["markers"], d["head"][:400])
         for r in results:
             if isinstance(r, Exception):
                 log.info("comparabili non disponibili per %r: %s", q, r)

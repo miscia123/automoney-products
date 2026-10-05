@@ -27,6 +27,7 @@ class BrowserHttp:
         self._pw = None
         self._ctx = None
         self._warmed: set[str] = set()
+        self.last: dict[str, dict] = {}
         self._lock = asyncio.Lock()
 
     async def __aenter__(self):
@@ -63,8 +64,13 @@ class BrowserHttp:
                     await page.goto(self.warmup[host], wait_until="domcontentloaded", timeout=45000)
                     await asyncio.sleep(random.uniform(2, 4))
                     self._warmed.add(host)
-                await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                resp = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
                 await asyncio.sleep(random.uniform(1.5, 3.5))
-                return await page.content()
+                html = await page.content()
+                if os.environ.get("DEALHUNTER_DEBUG_HTTP") == "1":
+                    from .http import summarize
+
+                    self.last[host] = summarize(page.url, resp.status if resp else 0, html, "text/html (browser)")
+                return html
             finally:
                 await page.close()

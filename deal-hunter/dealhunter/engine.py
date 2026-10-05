@@ -35,6 +35,16 @@ AUCTION_COMPETITION = {"catawiki": 0.8, "ebay": 0.75, "zoll": 0.7, "affide": 0.7
                        "buyee": 0.7, "liveauctioneers": 0.7, "watchcollecting": 0.8, "ricardo": 0.7}
 
 
+SOURCE_HOSTS = {
+    "subito": ("subito.it",), "vinted": ("vinted",), "ebay": ("ebay.",), "wallapop": ("wallapop",),
+    "catawiki": ("catawiki",), "affide": ("affide",), "zoll": ("zoll-auktion",),
+    "judicial": ("giustizia", "astegiudiziarie", "fallcoaste"), "chrono24": ("chrono24",),
+    "kleinanzeigen": ("kleinanzeigen",), "marktplaats": ("marktplaats", "2dehands"), "willhaben": ("willhaben",),
+    "ricardo": ("ricardo",), "watchexchange": ("reddit",), "watchcollecting": ("collecting",),
+    "orologipassioni": ("forumfree",), "buyee": ("buyee",), "liveauctioneers": ("liveauctioneers",),
+}
+
+
 class Engine:
     def __init__(self, cfg: dict):
         self.cfg = cfg
@@ -152,6 +162,20 @@ class Engine:
                 stats["extra_pages"] += 1
         return out
 
+    def _log_zero(self, name: str, what: str) -> None:
+        """Prima ricerca senza risultati: con la diagnostica HTTP attiva, mostra cosa ha risposto il sito."""
+        http = getattr(self.sources[name], "http", None)
+        last = getattr(http, "last", None) or {}
+        hosts = SOURCE_HOSTS.get(name, (name,))
+        mine = [h for h in list(last) if any(x in h for x in hosts)]
+        if not mine:
+            log.info("%s %r: nessun risultato", name, what)
+            return
+        for host in mine:
+            d = last.pop(host)
+            log.warning("%s %r: 0 risultati | %s %s %sB %s | titolo=%r | segni=%s | inizio=%r", name, what, host,
+                        d["status"], d["bytes"], d["type"][:30], d["title"], d["markers"], d["head"][:400])
+
     async def collect(self, name: str, stats: dict | None = None) -> list[Listing]:
         src = self.sources[name]
         stats = stats if stats is not None else {}
@@ -161,6 +185,8 @@ class Engine:
         if src.catalog_mode:
             prog.update(step="catalogo", done=0, total=1)
             listings = await src.catalog()
+            if not listings:
+                self._log_zero(name, "catalogo")
         else:
             queries = self.queries_for(name)
             stats["queries"] = len(queries)
@@ -170,6 +196,9 @@ class Engine:
                 prog["done"] = i
                 try:
                     got = await self._search_deep(src, q, stats)
+                    if not got and not stats.get("zero_logged"):
+                        stats["zero_logged"] = True
+                        self._log_zero(name, q.q)
                 except Exception as e:
                     log.info("%s %r: %s", name, q.q, e)
                     errors.append(e)
@@ -419,6 +448,9 @@ class Engine:
         names = only or (list(self.sources) if force else self.due_sources())
         names = [n for n in names if n in self.sources]
         results = await asyncio.gather(*(self.run_source(n) for n in names))
+        if self.comps.stats:
+            log.info("fonti dei prezzi venduti: %s", ", ".join(
+                f"{k} {v['ok']} ok/{v['empty']} vuote/{v['error']} errori" for k, v in sorted(self.comps.stats.items())))
         await self.harvest_results()
         await self.maybe_digest()
         return [d for r in results for d in r]
