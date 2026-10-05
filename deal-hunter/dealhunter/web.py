@@ -221,11 +221,12 @@ async def serve(cfg: dict, host: str = "127.0.0.1", port: int = 8765, auto: bool
             await runner.cleanup()
 
 
-def export_snapshot(cfg: dict, out_path: str, hours: float = 72, demo: bool = False) -> str:
+def export_snapshot(cfg: dict, out_path: str, hours: float = 72, demo: bool = False, note: str | None = None) -> str:
     """Pagina statica con i dati di adesso dentro: si apre senza server (anche dal telefono)."""
     eng = Engine(cfg)
     dash = Dashboard(eng, auto=False, demo=demo)
-    snap = dash.state() | {"deals": dash.deals(hours, ("hot", "good", "watch", "unvalued")), "snapshot": True}
+    snap = dash.state() | {"deals": dash.deals(hours, ("hot", "good", "watch", "unvalued")), "snapshot": True,
+                           "note": note}
     payload = _dumps(snap).replace("</", "<\\/")
     html = page_fragment().replace("<!--SNAPSHOT-->", f"<script>window.__DH_SNAPSHOT__ = {payload};</script>")
     with open(out_path, "w", encoding="utf-8") as f:

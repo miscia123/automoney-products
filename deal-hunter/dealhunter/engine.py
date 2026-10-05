@@ -230,7 +230,7 @@ class Engine:
     # --- valutazione -----------------------------------------------------------------
     async def evaluate(self, listing: Listing) -> Deal | None:
         attrs = extract(listing)
-        skip = ("fake_risk" in attrs.flags
+        skip = ("fake_risk" in attrs.flags or "part" in attrs.flags
                 or ("plated" in attrs.flags and attrs.category in (Category.GOLD, Category.BULLION_COIN))
                 or attrs.category == Category.OTHER
                 or (listing.price < self.cfg["evaluation"].get("min_price_eur", 20) and listing.kind != SaleKind.AUCTION))

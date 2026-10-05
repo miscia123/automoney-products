@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import statistics
 
-from .extract import FAKE_RE, FLAG_RE, KARAT_FINENESS, PLATED_RE, similarity
+from .extract import FAKE_RE, FLAG_RE, KARAT_FINENESS, PARTS_RE, PLATED_RE, material, similarity
 from .market import Market
 from .models import Attributes, Category, Comparable, Listing, Valuation
 
@@ -34,12 +34,16 @@ def filter_comps(listing: Listing, attrs: Attributes, comps: list[Comparable],
     """Tiene solo i comparabili davvero simili e nelle stesse condizioni."""
     ref = attrs.query_text or listing.title
     listing_broken = "broken" in attrs.flags
+    check_material = attrs.category in (Category.WATCH, Category.JEWELRY)
+    listing_mat = material(listing.title) if check_material else None
     kept = []
     for c in comps:
         if c.price_eur <= 0:
             continue
-        if FAKE_RE.search(c.title) or PLATED_RE.search(c.title):
+        if FAKE_RE.search(c.title) or PLATED_RE.search(c.title) or PARTS_RE.search(c.title):
             continue
+        if check_material and c.kind != "index" and material(c.title) != listing_mat:
+            continue  # un Daytona d'oro non si valuta con quelli d'acciaio
         c_broken = bool(FLAG_RE["broken"].search(c.title))
         if c_broken != listing_broken:
             continue
@@ -100,6 +104,10 @@ def value(listing: Listing, attrs: Attributes, comps: list[Comparable], market: 
         conf = min(1.0, n_eff / 10) * (0.4 + 0.6 * max(0.0, 1 - disp))
         n_sold = sum(1 for c in comps if c.kind == "sold")
         method = f"mediana di {len(comps)} comparabili ({n_sold} venduti)"
+        if n_sold == 0 and not any(c.match == "ref" or c.kind == "index" for c in comps):
+            # solo prezzi chiesti di marca + modello, senza la referenza: utile per orientarsi, non per comprare
+            conf = min(conf, 0.35)
+            method += "; solo prezzi chiesti per marca e modello, manca la referenza esatta"
 
     if melt:
         if attrs.category == Category.GOLD:

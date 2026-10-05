@@ -140,9 +140,9 @@ class CompsEngine:
     # --- indice di mercato interno: prezzi richiesti dello stesso oggetto altrove -----------
     async def _market_asks(self, listing: Listing, attrs: Attributes) -> list[Comparable]:
         if attrs.reference and len(attrs.reference) >= 4:
-            patterns = [attrs.reference]
+            patterns, match = [attrs.reference], "ref"
         elif attrs.brand and attrs.model:
-            patterns = [attrs.brand.split()[0], attrs.model]
+            patterns, match = [attrs.brand.split()[0], attrs.model], "model"
         else:
             return []
         out = []
@@ -153,7 +153,7 @@ class CompsEngine:
                 continue
             if eur:
                 out.append(Comparable(price_eur=round(eur, 2), title=r["title"], source=f"mercato_{r['source']}",
-                                      kind="ask", url=r["url"]))
+                                      kind="ask", url=r["url"], match=match))
         return out
 
     # --- storico proprio (aste chiuse rilette dal bot) ---------------------------------

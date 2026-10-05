@@ -95,6 +95,7 @@ class Comparable:
     url: str | None = None
     sold_at: datetime | None = None
     similarity: float = 1.0
+    match: str = ""  # "ref" = stessa referenza, "model" = solo marca e modello
 
 
 @dataclass

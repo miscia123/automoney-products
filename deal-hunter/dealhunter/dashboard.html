@@ -43,6 +43,7 @@
   --shadow: 0 10px 30px rgb(0 0 0 / 0.5); color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.45; }
 a { color: inherit; }
 button, select, input, textarea { font: inherit; color: inherit; }
@@ -420,7 +421,7 @@ svg .ah { fill: var(--ink); } svg .ahm { fill: var(--muted); }
                   set(k, v) { try { localStorage.setItem("dh:" + k, JSON.stringify(v)); } catch {} } };
 
   let state = null, deals = [], selected = null;
-  const filt = Object.assign({levels: ["hot", "good"], cat: "", src: "", sort: "score", text: "", hide: true}, store.get("filters", {}));
+  const filt = Object.assign({levels: ["hot", "good", "watch"], cat: "", src: "", sort: "score", text: "", hide: true}, store.get("filters2", {}));
 
   async function api(path, body) {
     if (SNAP) throw new Error("anteprima statica");
@@ -448,7 +449,7 @@ svg .ah { fill: var(--ink); } svg .ahm { fill: var(--muted); }
     if (SNAP || s.demo) {
       banner.hidden = false;
       banner.textContent = SNAP
-        ? "Anteprima statica: i dati sono fermi al momento dell'esportazione" + (s.demo ? " e sono di esempio" : "") + ". Le scansioni si lanciano dalla dashboard sul tuo PC (dealhunter dashboard)."
+        ? (s.note || "Anteprima statica: i dati sono fermi al momento dell'esportazione" + (s.demo ? " e sono di esempio" : "") + ".") + " Le scansioni si lanciano dalla dashboard sul tuo PC (dealhunter dashboard)."
         : "Dati di esempio, calcolati dal vero motore di valutazione. Avvia senza --demo per vedere i tuoi.";
     } else banner.hidden = true;
     $("#auto").checked = !!s.auto; $("#auto").disabled = !!SNAP || s.demo;
@@ -655,11 +656,11 @@ svg .ah { fill: var(--ink); } svg .ahm { fill: var(--muted); }
 
   document.querySelectorAll(".chip[data-level]").forEach(b => b.onclick = () => {
     const l = b.dataset.level; filt.levels = filt.levels.includes(l) ? filt.levels.filter(x => x !== l) : [...filt.levels, l];
-    store.set("filters", filt); renderFilters(); renderDeals();
+    store.set("filters2", filt); renderFilters(); renderDeals();
   });
-  [["#fCat", "cat"], ["#fSrc", "src"], ["#fSort", "sort"]].forEach(([s, k]) => $(s).onchange = (e) => { filt[k] = e.target.value; store.set("filters", filt); renderDeals(); });
-  $("#fText").oninput = (e) => { filt.text = e.target.value; store.set("filters", filt); renderDeals(); };
-  $("#fHide").onchange = (e) => { filt.hide = e.target.checked; store.set("filters", filt); renderDeals(); renderUnvalued(); };
+  [["#fCat", "cat"], ["#fSrc", "src"], ["#fSort", "sort"]].forEach(([s, k]) => $(s).onchange = (e) => { filt[k] = e.target.value; store.set("filters2", filt); renderDeals(); });
+  $("#fText").oninput = (e) => { filt.text = e.target.value; store.set("filters2", filt); renderDeals(); };
+  $("#fHide").onchange = (e) => { filt.hide = e.target.checked; store.set("filters2", filt); renderDeals(); renderUnvalued(); };
   $("#deals").onclick = (e) => { const b = e.target.closest(".deal"); if (b) renderDetail(deals.find(d => d.key === b.dataset.key)); };
   $("#scrim").onclick = closeDetail;
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });

@@ -78,8 +78,9 @@ WATCH_BRANDS = {
 WATCH_BRAND_RE = [(b, [re.compile(p, re.I) for p in pats], tier) for b, (pats, tier) in WATCH_BRANDS.items()]
 
 WATCH_MODELS = {
-    "Rolex": ["submariner", "datejust", "day-date", "daytona", "gmt-master", "explorer", "sea-dweller",
-              "yacht-master", "oyster perpetual", "air-king", "milgauss", "sky-dweller", "cellini", "deepsea"],
+    # ordine = priorità: i modelli specifici prima, "oyster perpetual" (scritto su quasi tutti i Rolex) per ultimo
+    "Rolex": ["sea-dweller", "deepsea", "submariner", "day-date", "datejust", "daytona", "gmt-master", "explorer",
+              "yacht-master", "air-king", "milgauss", "sky-dweller", "cellini", "bubbleback", "oyster perpetual"],
     "Omega": ["speedmaster", "seamaster", "constellation", "de ville", "aqua terra", "planet ocean", "railmaster"],
     "Audemars Piguet": ["royal oak offshore", "royal oak", "code 11.59"],
     "Patek Philippe": ["nautilus", "aquanaut", "calatrava", "complications", "gondolo"],
@@ -158,6 +159,34 @@ FLAG_PATTERNS = {
 }
 FLAG_RE = {k: re.compile(p, re.I) for k, p in FLAG_PATTERNS.items()}
 
+# ricambi e accessori venduti da soli: non sono l'oggetto (quadrante, cinturino, scatola vuota...)
+PARTS_RE = re.compile(
+    r"^\W*(quadrante|pulsant[ei]|lancette|corona|cinturino|bracciale\s+(per|di)\s+rolex|maglie|maglia|fibbia|"
+    r"chiusura|deployante|scatola|box|cofanetto|garanzia|vetro|ghiera|lunetta|inserto|movimento|calibro|cassa\s+vuota|"
+    r"dial|strap|bezel|crown|hands|links?|buckle|clasp|parts|papers|zifferblatt|armband\s+f[uü]r|band|"
+    r"wijzerplaat|horlogeband|doos|kast)\b"
+    r"|\b(solo|only|nur)\s+(scatola|box|garanzia|papers|quadrante|dial)\b"
+    r"|\bper\s+rolex\b|\bfor\s+rolex\b|\bf[uü]r\s+rolex\b|\bvoor\s+rolex\b",
+    re.I,
+)
+# materiale della cassa: oro pieno, acciaio-oro, diamanti; i comparabili devono coincidere
+MAT_GOLD_RE = re.compile(r"\b(oro|gold|goud)\b(?!\s*(plated|placcat|filled))|\b(18\s*k|18\s*kt|750)\b|"
+                         r"everose|rose\s*gold|white\s*gold|yellow\s*gold|platino|platinum|gelbgold|weißgold|witgoud", re.I)
+MAT_BICOLOR_RE = re.compile(r"bicolor|bi-?colou?r|two[\s-]?tone|acciaio\s+e\s+oro|staal\s*/?\s*goud|stahl\s*/?\s*gold|"
+                            r"rolesor|steel\s*(and|&|/)\s*gold|oro\s*/\s*acciaio", re.I)
+MAT_DIAMOND_RE = re.compile(r"diamant|diamond|brillant|pav[eé]", re.I)
+
+
+def material(title: str) -> str:
+    """Classe di materiale dal titolo: diamanti > bicolore > oro > acciaio."""
+    if MAT_DIAMOND_RE.search(title):
+        return "diamonds"
+    if MAT_BICOLOR_RE.search(title):
+        return "bicolor"
+    if MAT_GOLD_RE.search(title):
+        return "gold"
+    return "steel"
+
 GRAMS_RE = re.compile(r"(\d{1,4}(?:[.,]\d{1,3})?)\s*(?:g\b|gr\b|grs\b|gramm[io]?\b|grams?\b|gramm\b)", re.I)
 WEIGHT_WORD_RE = re.compile(r"(?:peso|pesa|weight|gewicht|poids|grammi|gr\.?)\s*(?:totale|lordo|netto|di|ca\.?|circa|:)?\s*"
                             r"(\d{1,4}(?:[.,]\d{1,3})?)", re.I)
@@ -193,6 +222,8 @@ def extract(listing: Listing) -> Attributes:
     for name, rx in FLAG_RE.items():
         if rx.search(full):
             a.flags.add(name)
+    if PARTS_RE.search(title):
+        a.flags.add("part")
     if FAKE_RE.search(full):
         a.flags.add("fake_risk")
     plated = bool(PLATED_RE.search(full))
@@ -247,8 +278,9 @@ def extract(listing: Listing) -> Attributes:
         a.category = Category.WATCH
         if watch_brand:
             a.brand = watch_brand[0]
-            for model in WATCH_MODELS.get(a.brand, []):
-                if model.replace("-", "") in title.lower().replace("-", ""):
+            flat = re.sub(r"[\s\-]+", "", title.lower())
+            for model in WATCH_MODELS.get(a.brand, []):  # in ordine di priorità
+                if re.sub(r"[\s\-]+", "", model) in flat:
                     a.model = model
                     break
         a.reference = _reference(full, a.brand)
