@@ -1,0 +1,22 @@
+# Configurazione per la scansione su GitHub Actions (collaudo dal vivo dei connettori).
+# Niente notifiche né perito AI; Chrono24 solo come sorgente, non come prezzo di riferimento
+# (passa dal browser ed è lento: per un collaudo bastano gli altri riferimenti).
+# eBay, Buyee e Reddit bloccano le reti dei datacenter (GitHub): qui sono spenti, dal PC di casa funzionano.
+db_path: data/dealhunter.sqlite
+watchlist: config/watchlist.yaml
+log_level: INFO
+llm: {enabled: false}
+alerts:
+  telegram: {enabled: false}
+  digest_hour: null
+comps:
+  chrono24: false
+  ebay_domains: []
+evaluation:
+  concurrency: 12
+  max_pages: 3
+  reeval_hours: 1                   # rivaluta tutto ciò che è stato visto nel giro precedente
+sources:
+  buyee: {enabled: false}          # dai server di GitHub risponde 403
+  ebay: {enabled: false}           # pagina anti-bot / richiesta di accesso dai datacenter
+  watchexchange: {enabled: false}  # Reddit risponde 403 dai datacenter

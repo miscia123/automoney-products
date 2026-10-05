@@ -1,0 +1,673 @@
+<title>DealHunter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: banco del perito. Barra di comando, striscia di indicatori, elenco denso
+   degli affari con scheda di dettaglio a scomparsa; le altre viste sono schede. */
+:root {
+  --bg: #f2f3ef;
+  --surface: #ffffff;
+  --surface-2: #e9ebe5;
+  --ink: #181b19;
+  --muted: #5a615b;
+  --line: #d6dad2;
+  --brass: #8a5c00;
+  --brass-soft: #f4e7c9;
+  --brass-ink: #5c3d00;
+  --good: #0ca30c;
+  --good-ink: #0a6b0a;
+  --warn: #fab219;
+  --warn-ink: #7a5300;
+  --crit: #d03b3b;
+  --crit-ink: #ad2525;
+  --info: #2a78d6;
+  --shadow: 0 10px 30px rgb(24 27 25 / 0.14);
+  --f-display: "Bricolage Grotesque", "Archivo", system-ui, sans-serif;
+  --f-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1210; --surface: #171b18; --surface-2: #20251f; --ink: #e7eae4; --muted: #9ca59d;
+    --line: #2c322d; --brass: #dcb05a; --brass-soft: #3a2e15; --brass-ink: #f2d696;
+    --good-ink: #6fd86f; --warn-ink: #f6c55a; --crit-ink: #f08a8a; --info: #3987e5;
+    --shadow: 0 10px 30px rgb(0 0 0 / 0.5); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1210; --surface: #171b18; --surface-2: #20251f; --ink: #e7eae4; --muted: #9ca59d;
+  --line: #2c322d; --brass: #dcb05a; --brass-soft: #3a2e15; --brass-ink: #f2d696;
+  --good-ink: #6fd86f; --warn-ink: #f6c55a; --crit-ink: #f08a8a; --info: #3987e5;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.5); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.45; }
+a { color: inherit; }
+button, select, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+.app { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 48px; display: grid; gap: 14px; }
+
+/* barra di comando */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; min-width: 0; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 24px; letter-spacing: -0.01em; margin: 0; }
+.brand .loupe { width: 22px; height: 22px; align-self: center; color: var(--brass); }
+.mode { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); }
+.mode.demo, .mode.snap { border-color: var(--brass); color: var(--brass-ink); background: var(--brass-soft); }
+.updated { color: var(--muted); font-size: 12px; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
+.btn.primary:hover { opacity: 0.9; }
+a.btn { text-decoration: none; }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.btn.small { padding: 4px 9px; font-size: 12px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; }
+.switch input { appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative;
+  cursor: pointer; transition: background .15s; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--surface); transition: transform .15s; }
+.switch input:checked { background: var(--good); }
+.switch input:checked::after { transform: translateX(14px); }
+
+.banner { border: 1px dashed var(--brass); background: var(--brass-soft); color: var(--brass-ink); border-radius: var(--r);
+  padding: 10px 14px; font-size: 13px; }
+
+/* indicatori */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; min-width: 0; }
+.kpi .label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.kpi .value { font-family: var(--f-display); font-weight: 600; font-size: 24px; line-height: 1.2; margin-top: 2px; }
+.kpi .sub { font-size: 12px; color: var(--muted); }
+.kpi .value .num { font-family: var(--f-data); font-size: 21px; font-weight: 500; }
+
+/* schede */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 12px; cursor: pointer; color: var(--muted);
+  font-weight: 600; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brass); }
+.tab .count { font-family: var(--f-data); font-weight: 500; font-size: 12px; margin-left: 4px; color: var(--muted); }
+
+/* filtri */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.filters select, .filters input[type=search] { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 9px; }
+.filters input[type=search] { min-width: 0; flex: 1 1 180px; }
+.filters .sep { flex: 1 0 0; }
+
+/* righe affari */
+.deals { display: grid; gap: 8px; }
+.deal { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; cursor: pointer; text-align: left; width: 100%; }
+.deal:hover { border-color: var(--muted); }
+.deal.dim { opacity: 0.55; }
+.thumb { width: 64px; height: 64px; border-radius: 8px; background: var(--surface-2); object-fit: cover; display: grid; place-items: center;
+  color: var(--muted); font-size: 10px; line-height: 1.15; text-align: center; padding: 4px; overflow: hidden; overflow-wrap: anywhere; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.dmain { min-width: 0; display: grid; gap: 4px; }
+.dtitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--muted); align-items: center; }
+.figs { display: grid; grid-template-columns: repeat(6, minmax(76px, auto)); gap: 2px 16px; text-align: right; }
+.fig .k { font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.fig .v { font-family: var(--f-data); font-variant-numeric: tabular-nums; font-size: 14px; }
+.pos { color: var(--good-ink); }
+.neg { color: var(--crit-ink); }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 600;
+  border: 1px solid transparent; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.lv-hot { background: var(--brass); color: var(--bg); }
+.lv-hot::before { background: var(--bg); }
+.lv-good { border-color: var(--good); color: var(--good-ink); }
+.lv-watch { border-color: var(--line); color: var(--muted); }
+.lv-unvalued { border-color: var(--warn); color: var(--warn-ink); }
+.st { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+.meter { display: inline-grid; grid-template-columns: 46px auto; gap: 6px; align-items: center; justify-content: end; }
+.meter .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; border-radius: 3px; }
+.empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 28px 18px; text-align: center; color: var(--muted); }
+
+@media (max-width: 980px) {
+  .deal { grid-template-columns: 56px minmax(0, 1fr); }
+  .thumb { width: 56px; height: 56px; }
+  .figs { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); text-align: left; gap: 6px 10px; }
+  .meter { justify-content: start; }
+}
+
+/* scheda di dettaglio */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); z-index: 20; }
+.detail { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--surface); z-index: 21;
+  box-shadow: var(--shadow); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px
+  calc(env(safe-area-inset-bottom, 0px) + 24px); display: grid; gap: 16px; align-content: start; }
+.detail h2 { font-family: var(--f-display); font-size: 21px; line-height: 1.2; margin: 6px 0 0; text-wrap: balance; }
+.detail h3 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.dhead { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.big { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.big div { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.big .k { font-size: 11px; color: var(--muted); }
+.big .v { font-family: var(--f-data); font-size: 19px; }
+table.calc { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.calc td { padding: 4px 0; border-bottom: 1px solid var(--line); }
+table.calc td:last-child { text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 10px; }
+table.calc tr.total td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--ink); }
+.comps { display: grid; gap: 4px; font-size: 12.5px; }
+.comp { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.comp .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.reasons { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+textarea { width: 100%; min-height: 56px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--surface); resize: vertical; }
+.note { font-size: 12px; color: var(--muted); }
+
+/* fonti */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+table.src { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 860px; }
+table.src th { text-align: left; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+  padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.src td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.src tr:last-child td { border-bottom: 0; }
+table.src td.r, table.src th.r { text-align: right; }
+.sname { font-weight: 600; }
+.ssub { font-size: 11.5px; color: var(--muted); }
+.cov { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cov .ic { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; color: #fff; }
+.cov-ok .ic { background: var(--good); } .cov-ok { color: var(--good-ink); }
+.cov-running .ic { background: var(--info); } .cov-running { color: var(--info); }
+.cov-late .ic { background: var(--warn); color: #3a2a00; } .cov-late { color: var(--warn-ink); }
+.cov-error .ic { background: var(--crit); } .cov-error { color: var(--crit-ink); }
+.cov-never .ic, .cov-off .ic { background: var(--muted); } .cov-never, .cov-off { color: var(--muted); }
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
+.spark i { width: 6px; border-radius: 2px 2px 0 0; background: var(--muted); opacity: 0.55; min-height: 2px; }
+.spark i.err { background: var(--crit); opacity: 1; height: 26px !important; border-radius: 2px; }
+.spark i.cap { background: var(--warn); opacity: 1; }
+.prog { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; margin-top: 4px; width: 120px; }
+.prog i { display: block; height: 100%; background: var(--info); }
+.log { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; font-family: var(--f-data);
+  font-size: 12px; max-height: 280px; overflow: auto; display: grid; gap: 2px; }
+.log .w { color: var(--warn-ink); } .log .e { color: var(--crit-ink); }
+.log time { color: var(--muted); margin-right: 8px; }
+
+/* mappa */
+.mapgrid { display: grid; gap: 22px; }
+.mapgrid figure { max-width: 940px; }
+#guar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+figure { margin: 0; }
+.figwrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; }
+.figwrap svg { display: block; min-width: 640px; width: 100%; height: auto; color: var(--ink); }
+figcaption { font-size: 12.5px; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg .box.key { fill: var(--brass-soft); stroke: var(--brass); }
+svg .side { fill: var(--surface-2); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+svg .t1 { font: 600 15px var(--f-body); fill: var(--ink); }
+svg .t2 { font: 400 13px var(--f-body); fill: var(--muted); }
+svg .n { font: 500 13px var(--f-data); fill: var(--brass); }
+svg .flow { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+svg .branch { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+svg .lbl { font: 400 10.5px var(--f-body); fill: var(--muted); }
+svg .ah { fill: var(--ink); } svg .ahm { fill: var(--muted); }
+.guar { display: grid; gap: 10px; }
+.g { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; gap: 4px; }
+.g .gh { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; align-items: baseline; }
+.g .gh .cov { white-space: normal; }
+.g h4 { margin: 0; font-size: 14px; }
+.g p { margin: 0; color: var(--muted); font-size: 13px; max-width: 65ch; }
+.g.limits { border-style: dashed; }
+.section-title { font-family: var(--f-display); font-size: 18px; margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<!--SNAPSHOT-->
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15 15l5.5 5.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <h1>DealHunter</h1>
+      <span class="mode" id="mode">in diretta</span>
+    </div>
+    <span class="updated" id="updated">caricamento…</span>
+    <label class="switch" title="Gira ogni fonte al suo intervallo finché la dashboard è aperta"><input type="checkbox" id="auto"> Automatico</label>
+    <button class="btn primary" id="scanAll" type="button">Scansiona tutto ora</button>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="kpis" id="kpis" aria-label="Indicatori"></section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-deals" aria-controls="v-deals" aria-selected="true" type="button">Affari<span class="count" id="c-deals"></span></button>
+    <button class="tab" role="tab" id="t-sources" aria-controls="v-sources" aria-selected="false" type="button">Fonti e copertura<span class="count" id="c-sources"></span></button>
+    <button class="tab" role="tab" id="t-map" aria-controls="v-map" aria-selected="false" type="button">Come funziona</button>
+    <button class="tab" role="tab" id="t-unvalued" aria-controls="v-unvalued" aria-selected="false" type="button">Da verificare<span class="count" id="c-unvalued"></span></button>
+  </nav>
+
+  <!-- AFFARI -->
+  <section id="v-deals" role="tabpanel" aria-labelledby="t-deals" style="display:grid;gap:12px">
+    <div class="filters" role="group" aria-label="Filtri">
+      <button class="chip" data-level="hot" aria-pressed="true" type="button">Grandi affari</button>
+      <button class="chip" data-level="good" aria-pressed="true" type="button">Buoni</button>
+      <button class="chip" data-level="watch" aria-pressed="false" type="button">Da seguire</button>
+      <select id="fCat" aria-label="Categoria"><option value="">Tutte le categorie</option></select>
+      <select id="fSrc" aria-label="Fonte"><option value="">Tutte le fonti</option></select>
+      <select id="fSort" aria-label="Ordina per">
+        <option value="score">Ordina: migliori</option>
+        <option value="profit">Ordina: guadagno</option>
+        <option value="roi">Ordina: ROI</option>
+        <option value="reliability">Ordina: affidabilità</option>
+        <option value="ending">Ordina: aste in chiusura</option>
+        <option value="recent">Ordina: più recenti</option>
+      </select>
+      <input type="search" id="fText" placeholder="Cerca marca, modello, referenza…" aria-label="Cerca">
+      <label class="switch"><input type="checkbox" id="fHide" checked> Nascondi scartati</label>
+    </div>
+    <div class="deals" id="deals"></div>
+  </section>
+
+  <!-- FONTI -->
+  <section id="v-sources" role="tabpanel" aria-labelledby="t-sources" hidden style="gap:12px">
+    <div class="tablewrap">
+      <table class="src">
+        <thead><tr>
+          <th>Fonte</th><th>Copertura</th><th>Ultimo giro riuscito</th><th class="r">Intervallo</th>
+          <th class="r">Annunci letti</th><th class="r">Nuovi</th><th>Ultimi 12 giri</th><th></th>
+        </tr></thead>
+        <tbody id="srcRows"></tbody>
+      </table>
+    </div>
+    <p class="note">Barre grigie: annunci nuovi a ogni giro. Barra rossa: giro fallito. Barra gialla: una ricerca ha toccato il limite di pagine, quindi potevano esserci altri annunci.</p>
+    <h2 class="section-title">Registro</h2>
+    <div class="log" id="log" aria-live="polite"></div>
+  </section>
+
+  <!-- MAPPA -->
+  <section id="v-map" role="tabpanel" aria-labelledby="t-map" hidden>
+    <div class="mapgrid">
+      <figure>
+        <div class="figwrap">
+          <svg viewBox="0 0 940 1066" role="img" aria-label="Percorso di un annuncio: dalle ricerche e dai cataloghi, attraverso pianificatore, raccolta con paginazione, filtro dei già visti, estrazione, verifica del prezzo sui venduti, conti e livello, fino al perito AI e alla notifica. A destra le uscite laterali: allarme sulle fonti, recupero dei buchi, scarti registrati, lista da verificare a mano, storico dei venduti e rivalutazione.">
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ahm" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+            <rect class="box" x="20" y="16" width="215" height="84" rx="8"/>
+            <text class="n" x="34" y="42">1a</text>
+            <text class="t1" x="64" y="42">Watchlist</text>
+            <text class="t2" x="64" y="64"><tspan id="mapWl">58</tspan> ricerche: modelli,</text>
+            <text class="t2" x="64" y="82">referenze, oro, monete</text>
+            <rect class="box" x="255" y="16" width="215" height="84" rx="8"/>
+            <text class="n" x="269" y="42">1b</text>
+            <text class="t1" x="299" y="42">Cataloghi interi</text>
+            <text class="t2" x="299" y="64">Affide, Zoll, giudiziarie,</text>
+            <text class="t2" x="299" y="82">Reddit, forum, Catawiki</text>
+            <path class="flow" d="M127 100 V116 H245 V132" marker-end="url(#ah)"/><path class="flow" d="M362 100 V116 H245"/>
+            <rect class="box" x="20" y="134" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="160">2</text>
+            <text class="t1" x="64" y="160">Pianificatore</text>
+            <text class="t2" x="64" y="182">ogni fonte al suo intervallo, tutte in parallelo</text>
+            <path class="flow" d="M245 198 V230" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="232" width="450" height="80" rx="8"/>
+            <text class="n" x="34" y="258">3</text>
+            <text class="t1" x="64" y="258">Raccolta con paginazione</text>
+            <text class="t2" x="64" y="280">pagina 1; se è piena e tutta nuova legge la 2,</text>
+            <text class="t2" x="64" y="298">la 3… finché non ritrova annunci già visti</text>
+            <path class="branch" d="M470 272 H526" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="246" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="268">3 giri falliti → allarme</text><text class="t2" x="546" y="287">Telegram + fonte rossa in dashboard</text>
+            <path class="flow" d="M245 312 V344" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="346" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="372">4</text>
+            <text class="t1" x="64" y="372">Già visti? (database locale)</text>
+            <text class="t2" x="64" y="394">passano solo annunci nuovi o con prezzo cambiato</text>
+            <path class="branch" d="M470 378 H526" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="352" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="374">Fonte ferma oltre 2,5× l'intervallo</text><text class="t2" x="546" y="393">avviso + recupero con la paginazione</text>
+            <path class="flow" d="M245 410 V442" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="444" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="470">5</text>
+            <text class="t1" x="64" y="470">Estrazione</text>
+            <text class="t2" x="64" y="492">marca, referenza, grammi, carati, difetti, falsi</text>
+            <path class="branch" d="M470 476 H526" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="450" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="472">Replica, placcato, non prezioso</text><text class="t2" x="546" y="491">scartato ma registrato, mai in silenzio</text>
+            <path class="flow" d="M245 508 V540" marker-end="url(#ah)"/>
+            <rect class="box key" x="20" y="542" width="450" height="100" rx="8"/>
+            <text class="n" x="34" y="568">6</text>
+            <text class="t1" x="64" y="568">Prezzo verificato sui venduti</text>
+            <text class="t2" x="64" y="590">eBay venduti, LiveAuctioneers, Watch Collecting,</text>
+            <text class="t2" x="64" y="608">storico Catawiki, Cardmarket; Chrono24 come</text>
+            <text class="t2" x="64" y="626">riferimento; oro e argento al prezzo spot</text>
+            <path class="branch" d="M470 568 H526" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="542" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="564">Nessun venduto simile</text><text class="t2" x="546" y="583">scheda “Da verificare”: lo valuti tu</text>
+            <path class="branch" d="M530 624 H474" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="598" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="620">Asta chiusa → storico venduti</text><text class="t2" x="546" y="639">il prezzo pagato torna nei comparabili</text>
+            <path class="flow" d="M245 642 V674" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="676" width="450" height="80" rx="8"/>
+            <text class="n" x="34" y="702">7</text>
+            <text class="t1" x="64" y="702">Conti</text>
+            <text class="t2" x="64" y="724">costo in mano, riparazioni, incasso netto,</text>
+            <text class="t2" x="64" y="742">ROI, rischio 0-100, giorni, offerta massima</text>
+            <path class="flow" d="M245 756 V788" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="790" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="816">8</text>
+            <text class="t1" x="64" y="816">Livello</text>
+            <text class="t2" x="64" y="838">grande affare · buono · da seguire</text>
+            <path class="branch" d="M530 822 H474" marker-end="url(#ahm)"/>
+            <rect class="side" x="530" y="796" width="390" height="52" rx="8"/>
+            <text class="t1" x="546" y="818">Prezzo sceso o passate 12 ore</text><text class="t2" x="546" y="837">l'annuncio viene rivalutato</text>
+            <path class="flow" d="M245 854 V886" marker-end="url(#ah)"/>
+            <rect class="box" x="20" y="888" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="914">9</text>
+            <text class="t1" x="64" y="914">Perito AI (facoltativo)</text>
+            <text class="t2" x="64" y="936">solo i migliori: foto, falsi, riparazioni</text>
+            <path class="flow" d="M245 952 V984" marker-end="url(#ah)"/>
+            <rect class="box key" x="20" y="986" width="450" height="64" rx="8"/>
+            <text class="n" x="34" y="1012">10</text>
+            <text class="t1" x="64" y="1012">Notifica</text>
+            <text class="t2" x="64" y="1034">Telegram subito · dashboard · riepilogo serale</text>
+          </svg>
+        </div>
+        <figcaption>Il percorso di ogni annuncio. A sinistra il flusso principale; a destra, tratteggiate, le uscite laterali. Nessuna uscita fa sparire un annuncio senza lasciare traccia: o arriva un allarme o resta una riga da guardare.</figcaption>
+      </figure>
+      <div class="guar">
+        <h2 class="section-title">Come evito di perdere affari</h2>
+        <p class="note" style="margin:0">Ogni garanzia mostra il suo stato in questo momento, calcolato dalle ultime 24 ore di giri.</p>
+        <div id="guar"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DA VERIFICARE -->
+  <section id="v-unvalued" role="tabpanel" aria-labelledby="t-unvalued" hidden style="gap:12px">
+    <p class="note" style="margin:0">Preziosi trovati per cui il bot non ha trovato venduti simili, o le cui fonti di prezzo erano in errore: non vengono scartati, li trovi qui da valutare a mano. Quelli con fonti in errore vengono rivalutati al giro successivo.</p>
+    <div class="deals" id="unvalued"></div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="detail" id="detail" hidden aria-label="Dettaglio affare"></aside>
+
+<script>
+(() => {
+  const SNAP = window.__DH_SNAPSHOT__ || null;
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const SRC = {subito:"Subito", ebay:"eBay", vinted:"Vinted", wallapop:"Wallapop", catawiki:"Catawiki", affide:"Affide (pegno)",
+    zoll:"Zoll-Auktion", judicial:"Vendite giudiziarie", chrono24:"Chrono24", kleinanzeigen:"Kleinanzeigen",
+    marktplaats:"Marktplaats / 2dehands", willhaben:"Willhaben", ricardo:"Ricardo", watchexchange:"r/Watchexchange",
+    watchcollecting:"Watch Collecting", orologipassioni:"Orologi & Passioni", buyee:"Buyee (Giappone)", liveauctioneers:"LiveAuctioneers"};
+  const CAT = {watch:"Orologio", gold:"Oro a peso", jewelry:"Gioiello", bullion_coin:"Monete/lingotti", coin:"Moneta",
+    card:"Carta", bag:"Borsa", art:"Arte", wine:"Vino", collectible:"Collezionismo", other:"Altro"};
+  const LV = {hot:"Grande affare", good:"Buon affare", watch:"Da seguire", unvalued:"Da verificare"};
+  const COV = {ok:["✓","In orario"], running:["↻","In corso"], late:["!","In ritardo"], error:["✕","In errore"], never:["–","Mai eseguita"], off:["–","Non attiva"]};
+  const STATUS = ["visto", "offerta fatta", "comprato", "scartato"];
+  const nf0 = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 0});
+  const eur = (n) => n == null ? "–" : "€ " + nf0.format(n);
+  const money = (n, c) => n == null ? "–" : (c === "EUR" || !c ? "€ " : c + " ") + nf0.format(n);
+  const pct = (n) => n == null ? "–" : Math.round(n * 100) + "%";
+  const ago = (t) => { if (!t) return "mai"; const s = Date.now() / 1000 - t; if (s < 90) return "ora";
+    if (s < 3600) return Math.round(s / 60) + " min fa"; if (s < 86400) return Math.round(s / 3600) + " h fa"; return Math.round(s / 86400) + " g fa"; };
+  const left = (iso) => { if (!iso) return null; const h = (new Date(iso) - Date.now()) / 3.6e6; if (h < 0) return "chiusa";
+    if (h < 1) return Math.max(1, Math.round(h * 60)) + " min"; if (h < 48) return Math.round(h) + " h"; return Math.round(h / 24) + " g"; };
+  const relColor = (r) => r >= 70 ? "var(--good)" : r >= 50 ? "var(--warn)" : "var(--crit)";
+  const store = { get(k, d) { try { const v = localStorage.getItem("dh:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                  set(k, v) { try { localStorage.setItem("dh:" + k, JSON.stringify(v)); } catch {} } };
+
+  let state = null, deals = [], selected = null;
+  const filt = Object.assign({levels: ["hot", "good", "watch"], cat: "", src: "", sort: "score", text: "", hide: true}, store.get("filters2", {}));
+
+  async function api(path, body) {
+    if (SNAP) throw new Error("anteprima statica");
+    const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    return r.json();
+  }
+
+  async function load() {
+    try {
+      if (SNAP) { state = SNAP; deals = SNAP.deals || []; }
+      else { [state, deals] = await Promise.all([api("/api/state"), api("/api/deals?hours=168&levels=hot,good,watch,unvalued")]); }
+      render();
+    } catch (e) {
+      $("#updated").textContent = "dashboard non raggiungibile: " + e.message;
+    }
+  }
+
+  function render() {
+    const s = state;
+    $("#mode").textContent = SNAP ? "anteprima" : s.demo ? "dati di esempio" : "in diretta";
+    $("#mode").className = "mode" + (SNAP ? " snap" : s.demo ? " demo" : "");
+    $("#updated").textContent = (SNAP ? "esportata " : "aggiornata ") + new Date(s.now * 1000).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"});
+    const banner = $("#banner");
+    if (SNAP || s.demo) {
+      banner.hidden = false;
+      banner.textContent = SNAP
+        ? (s.note || "Anteprima statica: i dati sono fermi al momento dell'esportazione" + (s.demo ? " e sono di esempio" : "") + ".") + " Le scansioni si lanciano dalla dashboard sul tuo PC (dealhunter dashboard)."
+        : "Dati di esempio, calcolati dal vero motore di valutazione. Avvia senza --demo per vedere i tuoi.";
+    } else banner.hidden = true;
+    $("#auto").checked = !!s.auto; $("#auto").disabled = !!SNAP || s.demo;
+    $("#scanAll").disabled = !!SNAP || s.demo || s.scanning;
+    $("#scanAll").textContent = s.scanning ? "Scansione in corso…" : "Scansiona tutto ora";
+    renderKpis(); renderFilters(); renderDeals(); renderSources(); renderUnvalued(); renderGuarantees();
+    $("#mapWl").textContent = s.watchlist;
+    if (selected) { const d = deals.find(x => x.key === selected); if (d && !$("#detail").hidden) renderDetail(d); }
+  }
+
+  function renderKpis() {
+    const s = state, c = s.counts24 || {}, srcs = s.sources.filter(x => x.active);
+    const ok = srcs.filter(x => x.status === "ok" || x.status === "running").length;
+    const g = s.market.gold_eur_g;
+    const tiles = [
+      ["Grandi affari 24h", `<span class="num">${c.hot || 0}</span>`, `${c.good || 0} buoni · ${c.watch || 0} da seguire`],
+      ["Annunci letti 24h", `<span class="num">${nf0.format(c.n || 0)}</span>`, `${nf0.format(c.new || 0)} nuovi`],
+      ["Fonti in orario", `<span class="num">${ok}/${srcs.length}</span>`, srcs.length - ok ? `${srcs.length - ok} da controllare` : "copertura completa"],
+      ["Da verificare", `<span class="num">${c.unvalued || 0}</span>`, "preziosi senza prezzo"],
+      ["Oro fino", `<span class="num">${g ? "€ " + g.toFixed(2).replace(".", ",") : "–"}</span>`, "al grammo · " + (s.market.silver_eur_g ? "argento € " + s.market.silver_eur_g.toFixed(2).replace(".", ",") : "argento –")],
+      ["Avvisi", s.telegram ? "Telegram" : "Solo qui", s.llm ? "perito AI attivo" : "perito AI spento"],
+    ];
+    $("#kpis").innerHTML = tiles.map(([l, v, sub]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${esc(sub)}</div></div>`).join("");
+  }
+
+  function renderFilters() {
+    const cats = [...new Set(deals.map(d => d.category))].sort(), srcs = [...new Set(deals.map(d => d.source))].sort();
+    const fill = (sel, vals, names, cur, all) => { sel.innerHTML = `<option value="">${all}</option>` + vals.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(names[v] || v)}</option>`).join(""); };
+    fill($("#fCat"), cats, CAT, filt.cat, "Tutte le categorie");
+    fill($("#fSrc"), srcs, SRC, filt.src, "Tutte le fonti");
+    $("#fSort").value = filt.sort; $("#fText").value = filt.text; $("#fHide").checked = filt.hide;
+    document.querySelectorAll(".chip[data-level]").forEach(b => b.setAttribute("aria-pressed", filt.levels.includes(b.dataset.level)));
+  }
+
+  function visibleDeals() {
+    const t = filt.text.trim().toLowerCase();
+    let list = deals.filter(d => d.level !== "unvalued" && filt.levels.includes(d.level)
+      && (!filt.cat || d.category === filt.cat) && (!filt.src || d.source === filt.src)
+      && (!filt.hide || d.status !== "scartato") && (!t || (d.title + " " + JSON.stringify(d.attrs || {})).toLowerCase().includes(t)));
+    const end = (d) => d.ends_at ? new Date(d.ends_at).getTime() : Infinity;
+    const rank = {hot: 0, good: 1, watch: 2};
+    const by = {score: d => rank[d.level] * 1e9 - d.score, profit: d => -d.profit, roi: d => -d.roi, reliability: d => -d.reliability,
+                ending: d => end(d), recent: d => -(d.first_seen || 0)}[filt.sort];
+    return list.sort((a, b) => by(a) - by(b));
+  }
+
+  function thumb(d) {
+    const src = (d.images || [])[0];
+    return `<div class="thumb">${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : esc(CAT[d.category] || "")}</div>`;
+  }
+
+  function renderDeals() {
+    const list = visibleDeals();
+    $("#c-deals").textContent = deals.filter(d => ["hot", "good"].includes(d.level)).length;
+    if (!list.length) {
+      $("#deals").innerHTML = `<div class="empty">Nessun affare con questi filtri.${state.counts24 && !state.counts24.n ? " Lancia una scansione con il pulsante in alto: i risultati compaiono qui man mano." : " Prova ad aggiungere \"Da seguire\" o a togliere un filtro."}</div>`;
+      return;
+    }
+    $("#deals").innerHTML = list.map(d => {
+      const tl = left(d.ends_at);
+      return `<button class="deal${d.status === "scartato" ? " dim" : ""}" data-key="${esc(d.key)}" type="button">
+        ${thumb(d)}
+        <div class="dmain">
+          <div class="dtitle">${esc(d.title)}</div>
+          <div class="meta"><span class="pill lv-${d.level}">${LV[d.level]}</span><span>${esc(SRC[d.source] || d.source)}</span>
+            <span>${esc(CAT[d.category] || d.category)}</span>${d.country && d.country !== "IT" ? `<span>${esc(d.country)}</span>` : ""}
+            ${d.status && d.status !== "nuovo" ? `<span class="st">${esc(d.status)}</span>` : ""}</div>
+        </div>
+        <div class="figs">
+          <div class="fig"><div class="k">${d.kind === "auction" ? "Offerta" : "Prezzo"}</div><div class="v">${money(d.price, d.currency)}</div></div>
+          <div class="fig"><div class="k">Valore</div><div class="v">${eur(d.fair_value)}</div></div>
+          <div class="fig"><div class="k">Guadagno</div><div class="v ${d.profit >= 0 ? "pos" : "neg"}">${eur(d.profit)}</div></div>
+          <div class="fig"><div class="k">ROI</div><div class="v">${pct(d.roi)}</div></div>
+          <div class="fig"><div class="k">Affidabilità</div><div class="v meter"><span class="bar"><i style="width:${d.reliability}%;background:${relColor(d.reliability)}"></i></span>${d.reliability}</div></div>
+          <div class="fig"><div class="k">${tl ? "Fine asta" : "Rivendita"}</div><div class="v">${tl || (d.resale_days ? d.resale_days[0] + "–" + d.resale_days[1] + " g" : "–")}</div></div>
+        </div></button>`;
+    }).join("");
+  }
+
+  function renderDetail(d) {
+    selected = d.key;
+    const c = d.cost || {}, tl = left(d.ends_at), auction = d.kind === "auction";
+    const comps = (d.comps || []).map(x => `<div class="comp"><span class="num">${eur(x.price_eur)}</span><span class="t">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title)}</span><span class="note">${esc((x.source || "").replace(/_/g, " "))}${x.sold_at ? " · " + new Date(x.sold_at).toLocaleDateString("it-IT") : ""}</span></div>`).join("");
+    const llm = d.llm ? `<div><h3>Perito AI · ${esc(d.llm.verdict)}</h3><p style="margin:0">${esc(d.llm.summary_it)}</p>${(d.llm.red_flags || []).length ? `<ul class="reasons">${d.llm.red_flags.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}</div>` : "";
+    const [rlo, rhi, ritems] = d.repair || [0, 0, []];
+    $("#detail").innerHTML = `
+      <div class="dhead"><span class="pill lv-${d.level}">${LV[d.level]}</span><button class="btn small" id="close" type="button">Chiudi</button></div>
+      <div><h2>${esc(d.title)}</h2>
+        <div class="meta" style="margin-top:6px">${esc(SRC[d.source] || d.source)} · ${esc(CAT[d.category] || d.category)}${d.location ? " · " + esc(d.location) : ""}${tl ? " · fine tra " + tl : ""}</div></div>
+      <div class="actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">Apri l'annuncio ↗</a></div>
+      <div class="big">
+        <div><div class="k">Guadagno stimato</div><div class="v ${d.profit >= 0 ? "pos" : "neg"}">${eur(d.profit)}</div></div>
+        <div><div class="k">ROI</div><div class="v">${pct(d.roi)}</div></div>
+        <div><div class="k">Affidabilità</div><div class="v">${d.reliability}/100</div></div>
+        <div><div class="k">${auction ? "Offerta massima" : "Prezzo massimo"}</div><div class="v">${d.max_bid != null ? money(d.max_bid, d.currency) : "–"}</div></div>
+      </div>
+      <div><h3>Il conto</h3><table class="calc">
+        <tr><td>${auction ? "Offerta attuale" : "Prezzo richiesto"}${d.bids != null ? ` (${d.bids} offerte)` : ""}</td><td>${money(d.price, d.currency)}</td></tr>
+        ${auction && d.predicted_final ? `<tr><td>Prezzo finale stimato (usato nei conti)</td><td>${money(d.predicted_final, d.currency)}</td></tr>` : ""}
+        ${d.currency && d.currency !== "EUR" ? `<tr><td>Prezzo in euro (cambio BCE)</td><td>${eur(c.item_eur)}</td></tr>` : ""}
+        <tr><td>Commissioni d'acquisto + IVA</td><td>${eur((c.buyer_premium || 0) + (c.vat_on_premium || 0))}</td></tr>
+        <tr><td>Spedizione</td><td>${eur(c.shipping)}</td></tr>
+        ${c.import_duty || c.import_vat ? `<tr><td>Dazi + IVA all'importazione + sdoganamento</td><td>${eur(c.import_duty + c.import_vat + c.other_fees)}</td></tr>` : ""}
+        <tr class="total"><td>Costo finale in mano</td><td>${eur(d.landed_cost)}</td></tr>
+        <tr><td>Riparazioni stimate${ritems && ritems.length ? ": " + esc(ritems.join("; ")) : ""}</td><td>${rhi ? eur(rlo) + "–" + eur(rhi) : "–"}</td></tr>
+        <tr><td>Incasso netto vendendo su ${esc(d.exit_channel)}</td><td>${eur(d.exit_net)}</td></tr>
+        <tr class="total"><td>Guadagno</td><td class="${d.profit >= 0 ? "pos" : "neg"}">${eur(d.profit)}</td></tr>
+      </table>
+      <p class="note">Rivendita stimata in ${d.resale_days ? d.resale_days[0] + "–" + d.resale_days[1] + " giorni" : "–"}.</p></div>
+      <div><h3>Prezzo verificato</h3>
+        <p style="margin:0 0 6px">${eur(d.fair_value)} <span class="note">(range ${eur(d.value_range?.[0])}–${eur(d.value_range?.[1])}) · ${esc(d.method)} · affidabilità della stima ${pct(d.confidence)}${d.melt_value ? " · valore del metallo " + eur(d.melt_value) : ""}</span></p>
+        <div class="comps">${comps || '<span class="note">Valore calcolato dal metallo fino: nessun comparabile necessario.</span>'}</div></div>
+      <div><h3>Rischio ${d.risk}/100</h3><ul class="reasons">${(d.risk_reasons || []).map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>
+      ${llm}
+      <div><h3>Il tuo stato</h3>
+        <div class="actions">${STATUS.map(s => `<button class="btn small" data-status="${s}" aria-pressed="${d.status === s}" type="button"${SNAP ? " disabled" : ""}>${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div>
+        <textarea id="note" placeholder="Note (es. contattato il venditore, appuntamento sabato)"${SNAP ? " disabled" : ""}>${esc(d.note || "")}</textarea>
+        ${SNAP ? '<p class="note">Nell\'anteprima statica lo stato non si salva: usalo dalla dashboard sul tuo PC.</p>' : ""}</div>`;
+    $("#detail").hidden = false; $("#scrim").hidden = false;
+    $("#close").onclick = closeDetail;
+    $("#detail").querySelectorAll("[data-status]").forEach(b => b.onclick = async () => {
+      try { await api("/api/status", {key: d.key, status: b.dataset.status, note: $("#note").value}); d.status = b.dataset.status; d.note = $("#note").value; renderDetail(d); renderDeals(); }
+      catch (e) { b.textContent = "Errore: " + e.message; }
+    });
+  }
+  function closeDetail() { $("#detail").hidden = true; $("#scrim").hidden = true; selected = null; }
+
+  function renderSources() {
+    const rows = state.sources;
+    $("#c-sources").textContent = rows.filter(r => ["error", "late"].includes(r.status)).length ? "⚠" : "";
+    $("#srcRows").innerHTML = rows.map(r => {
+      const [ic, label] = COV[r.status] || COV.never, h = r.health || {}, p = r.progress || {};
+      const cov = (r.coverage || []).slice().reverse();
+      const max = Math.max(1, ...cov.map(c => c.new_listings || 0));
+      const spark = cov.map(c => `<i class="${!c.ok ? "err" : c.capped_queries ? "cap" : ""}" style="height:${!c.ok ? 26 : Math.max(2, 26 * (c.new_listings || 0) / max)}px" title="${new Date(c.run_at * 1000).toLocaleString("it-IT")}: ${c.ok ? `${c.listings} letti, ${c.new_listings} nuovi${c.capped_queries ? `, ${c.capped_queries} ricerche al limite di pagine` : ""}` : "fallito: " + (c.error || "")}"></i>`).join("");
+      const running = r.status === "running";
+      const detail = r.status === "error" ? h.last_error_msg : !r.active ? (r.needs_browser ? "serve Playwright (browser vero)" : "non attiva") : `${r.kind}${r.paged ? " · paginata" : ""}${r.needs_browser ? " · browser" : ""}`;
+      return `<tr>
+        <td><div class="sname">${esc(SRC[r.name] || r.name)}</div><div class="ssub">${esc(detail || "")}</div></td>
+        <td><span class="cov cov-${r.status}"><span class="ic" aria-hidden="true">${ic}</span>${label}</span>
+          ${running ? `<div class="prog"><i style="width:${p.total ? Math.round(100 * p.done / p.total) : 8}%"></i></div><div class="ssub">${esc(p.step || "")} ${p.total ? p.done + "/" + p.total : ""}</div>` : ""}</td>
+        <td>${ago(h.last_ok)}</td>
+        <td class="r num">${r.interval_min < 60 ? r.interval_min + " min" : r.interval_min / 60 + " h"}</td>
+        <td class="r num">${h.last_count != null ? nf0.format(h.last_count) : "–"}</td>
+        <td class="r num">${cov.length ? cov[cov.length - 1].new_listings ?? "–" : "–"}</td>
+        <td><div class="spark">${spark || '<span class="ssub">nessun giro</span>'}</div></td>
+        <td class="r"><button class="btn small" data-scan="${esc(r.name)}" type="button"${SNAP || state.demo || !r.active || running ? " disabled" : ""}>Scansiona</button></td>
+      </tr>`;
+    }).join("");
+    document.querySelectorAll("[data-scan]").forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = "Avviata"; try { await api("/api/scan", {sources: [b.dataset.scan]}); } catch (e) { b.textContent = "Errore"; } setTimeout(load, 800); });
+    const ev = (state.events || []).slice().reverse();
+    $("#log").innerHTML = ev.length ? ev.map(e => `<div class="${e.level === "warning" ? "w" : e.level === "error" ? "e" : ""}"><time>${new Date(e.t * 1000).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"})}</time>${esc(e.msg)}</div>`).join("") : '<div class="note">Il registro si riempie durante le scansioni.</div>';
+  }
+
+  function renderUnvalued() {
+    const list = deals.filter(d => d.level === "unvalued" && (!filt.hide || d.status !== "scartato"));
+    $("#c-unvalued").textContent = list.length || "";
+    $("#unvalued").innerHTML = list.length ? list.map(d => `<a class="deal" href="${esc(d.url)}" target="_blank" rel="noopener" style="text-decoration:none">
+        ${thumb(d)}<div class="dmain"><div class="dtitle">${esc(d.title)}</div>
+        <div class="meta"><span class="pill lv-unvalued">Da verificare</span><span>${esc(SRC[d.source] || d.source)}</span><span>${esc(CAT[d.category] || d.category)}</span><span>${esc(d.reason || "")}</span></div></div>
+        <div class="figs" style="grid-template-columns:auto"><div class="fig"><div class="k">${d.kind === "auction" ? "Base" : "Prezzo"}</div><div class="v">${money(d.price, d.currency)}</div></div></div></a>`).join("")
+      : '<div class="empty">Niente da verificare a mano: ogni prezioso trovato ha un prezzo di riferimento.</div>';
+  }
+
+  function renderGuarantees() {
+    const s = state, act = s.sources.filter(x => x.active), now = s.now;
+    const day = (c) => c.run_at > now - 86400;
+    const cov = act.flatMap(x => (x.coverage || []).filter(day).map(c => ({...c, iv: x.interval_min})));
+    const late = act.filter(x => x.status === "late"), err = act.filter(x => x.status === "error");
+    const capped = cov.reduce((a, c) => a + (c.capped_queries || 0), 0);
+    const gaps = cov.filter(c => c.gap_s && c.gap_s > 2.5 * c.iv * 60).length;
+    const unv = (s.counts24 || {}).unvalued || 0;
+    const tag = (ok, okText, badText, kind = "error") => `<span class="cov cov-${ok ? "ok" : kind}"><span class="ic" aria-hidden="true">${ok ? "✓" : "!"}</span>${ok ? okText : badText}</span>`;
+    const G = [
+      ["Ogni fonte al suo ritmo", "I privati che svendono (Subito, Vinted, Kleinanzeigen, r/Watchexchange) sono controllati ogni 10-20 minuti; aste e cataloghi ogni 30 minuti-6 ore. L'intervallo è più corto della vita tipica di un affare.",
+        tag(!late.length, `${act.length - late.length}/${act.length} in orario`, `${late.length} in ritardo: ${late.map(x => SRC[x.name] || x.name).join(", ")}`, "late")],
+      ["Paginazione fino al già visto", "Se la prima pagina di una ricerca è piena di annunci mai visti, il bot legge la seconda, la terza… finché non ritrova annunci noti. Un picco di inserzioni non spinge nessun annuncio fuori dalla prima pagina senza che lo veda.",
+        tag(!capped, "nessuna ricerca al limite (24 h)", `${capped} ${capped === 1 ? "ricerca" : "ricerche"} al limite di pagine: abbassa l'intervallo`, "late")],
+      ["Recupero dopo i buchi", "Se il PC era spento o una fonte ha saltato dei giri, al rientro il bot lo rileva (più di 2,5 volte l'intervallo), ti avvisa e recupera con la paginazione.",
+        tag(!gaps, "nessun buco nelle ultime 24 h", `${gaps} ${gaps === 1 ? "buco recuperato" : "buchi recuperati"} nelle ultime 24 h`, "late")],
+      ["Allarme sulle fonti rotte", "Un sito che blocca o cambia struttura non resta muto: dopo 3 giri falliti arriva un messaggio su Telegram e la fonte diventa rossa qui. Il riepilogo serale le elenca di nuovo.",
+        tag(!err.length, "tutte le fonti rispondono", `${err.length} in errore: ${err.map(x => SRC[x.name] || x.name).join(", ")}`)],
+      ["Nessuno scarto silenzioso", "Repliche e placcati vengono scartati ma registrati. Un prezioso senza venduti simili finisce in \"Da verificare\" invece di sparire; se mancavano i prezzi per un errore, viene rivalutato al giro dopo.",
+        tag(!unv, "niente in sospeso", `${unv} da verificare a mano`, "late")],
+      ["Ricerche larghe + scansioni di categoria", "Oltre alle ricerche per modello, il bot legge interi cataloghi (Affide, Zoll, vendite giudiziarie, r/Watchexchange, mercatino del forum) e tutta la categoria Orologi di Catawiki in chiusura: trova anche ciò che non è nella watchlist.",
+        tag(true, `${s.watchlist} ricerche attive`, "")],
+      ["Rivalutazione continua", "Un annuncio viene rivalutato quando il prezzo scende e comunque ogni 12 ore; le aste dei cataloghi sono rilette ogni giorno, così l'avviso arriva nelle ultime 24 ore, quando conta.",
+        tag(true, "attiva", "")],
+      ["Due canali", "Ogni grande affare arriva su Telegram in pochi secondi, resta qui in dashboard e torna nel riepilogo serale: se perdi una notifica lo ritrovi.",
+        tag(s.telegram, "Telegram configurato", "Telegram non configurato: solo dashboard", "late")],
+    ];
+    $("#guar").innerHTML = G.map(([h, p, t]) => `<div class="g"><div class="gh"><h4>${h}</h4>${t}</div><p>${p}</p></div>`).join("") +
+      `<div class="g limits"><h4>Cosa non posso garantire</h4><p>Un annuncio pubblicato e tolto tra due giri (meno di 10-20 minuti) può sfuggire. Un sito che blocca il bot resta scoperto finché non si sistema il connettore: lo vedi subito qui e su Telegram. Gli oggetti descritti senza marca, modello o materiale vengono trovati solo dalle scansioni di catalogo.</p></div>`;
+  }
+
+  // eventi dell'interfaccia
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+    document.querySelectorAll("[role=tabpanel]").forEach(p => { const on = p.id === t.getAttribute("aria-controls"); p.hidden = !on; if (on) p.style.display = "grid"; });
+    store.set("tab", t.id);
+  });
+  const savedTab = location.hash ? "t-" + location.hash.slice(1) : store.get("tab", "t-deals");
+  if (document.getElementById(savedTab)) document.getElementById(savedTab).click();
+
+  document.querySelectorAll(".chip[data-level]").forEach(b => b.onclick = () => {
+    const l = b.dataset.level; filt.levels = filt.levels.includes(l) ? filt.levels.filter(x => x !== l) : [...filt.levels, l];
+    store.set("filters2", filt); renderFilters(); renderDeals();
+  });
+  [["#fCat", "cat"], ["#fSrc", "src"], ["#fSort", "sort"]].forEach(([s, k]) => $(s).onchange = (e) => { filt[k] = e.target.value; store.set("filters2", filt); renderDeals(); });
+  $("#fText").oninput = (e) => { filt.text = e.target.value; store.set("filters2", filt); renderDeals(); };
+  $("#fHide").onchange = (e) => { filt.hide = e.target.checked; store.set("filters2", filt); renderDeals(); renderUnvalued(); };
+  $("#deals").onclick = (e) => { const b = e.target.closest(".deal"); if (b) renderDetail(deals.find(d => d.key === b.dataset.key)); };
+  $("#scrim").onclick = closeDetail;
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+  $("#scanAll").onclick = async () => { $("#scanAll").disabled = true; $("#scanAll").textContent = "Avvio…"; try { await api("/api/scan", {}); } catch (e) { $("#updated").textContent = e.message; } setTimeout(load, 800); };
+  $("#auto").onchange = async (e) => { try { await api("/api/auto", {on: e.target.checked}); } catch { e.target.checked = !e.target.checked; } };
+
+  load();
+  if (!SNAP) (function tick() { setTimeout(async () => { await load(); tick(); }, state && (state.scanning || state.sources.some(s => s.status === "running")) ? 3000 : 15000); })();
+})();
+</script>

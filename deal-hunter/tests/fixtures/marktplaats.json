@@ -1,0 +1,8 @@
+{"totalResultCount": 2, "listings": [
+ {"itemId": "m2100000001", "title": "Tudor Black Bay 58 79030N", "description": "Compleet met doos en papieren",
+  "priceInfo": {"priceCents": 265000, "priceType": "FIXED"}, "location": {"cityName": "Utrecht"},
+  "date": "Vandaag", "imageUrls": ["//images.marktplaats.com/api/v1/listing-mp-p/images/aa/1.jpg?rule=ecg_mp_eps$_82"],
+  "sellerInformation": {"sellerName": "Jan"}, "attributes": [{"key": "delivery", "value": "Verzenden"}],
+  "vipUrl": "/v/sieraden-tassen-en-uiterlijk/horloges-heren/m2100000001-tudor-black-bay-58"},
+ {"itemId": "m2100000002", "title": "Rolex doos", "priceInfo": {"priceCents": 0, "priceType": "SEE_DESCRIPTION"}, "vipUrl": "/v/x"}
+]}

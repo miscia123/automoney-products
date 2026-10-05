@@ -1,0 +1,79 @@
+# Scansione dal vivo di DealHunter su GitHub Actions.
+# - Parte a mano (workflow_dispatch) oppure con un push sui rami claude/** il cui messaggio
+#   di commit contiene "[scan]": serve a collaudare i connettori contro i siti veri.
+# - Gli IP di GitHub sono di datacenter: Vinted e a volte eBay/Catawiki li bloccano. Il posto
+#   giusto per il bot di tutti i giorni resta il tuo PC (avvia-dashboard).
+# - Su repo privati ogni giro consuma minuti di Actions (2.000 gratis al mese).
+# - Lo stato (annunci già visti, storico venduti) passa da un giro all'altro tramite la cache.
+name: dealhunter-scan
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths: ["deal-hunter/**", ".github/workflows/dealhunter.yml"]
+  # schedule:
+  #   - cron: "17 * * * *"
+concurrency: dealhunter-scan
+jobs:
+  scan:
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, '[scan]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: deal-hunter
+    env:
+      DEALHUNTER_DEBUG_HTTP: "1"
+      # campioni HTML nei log per le fonti il cui connettore va adattato alla pagina vera
+      DEALHUNTER_DUMP_HOSTS: ${{ vars.DEALHUNTER_DUMP_HOSTS || 'liveauctioneers,collecting,astegiudiziarie' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DEALHUNTER_PROXY: ${{ secrets.DEALHUNTER_PROXY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ".[browser]"
+      - run: python -m playwright install --with-deps chromium
+      - uses: actions/cache/restore@v4
+        with:
+          path: deal-hunter/data
+          key: dealhunter-db-${{ github.run_id }}
+          restore-keys: dealhunter-db-
+      - name: Scansione completa
+        run: xvfb-run -a timeout -s INT 55m dealhunter -c config/ci-scan.yaml run --force || echo "scansione terminata con codice $?"
+      - name: Stato delle fonti
+        if: always()
+        run: dealhunter -c config/ci-scan.yaml status
+      - name: Affari trovati
+        if: always()
+        run: dealhunter -c config/ci-scan.yaml report --hours 24
+      - name: Istantanea per la dashboard
+        if: always()
+        run: |
+          dealhunter -c config/ci-scan.yaml export-html data/dealhunter-scan.html --hours 24
+          python - <<'PY'
+          import base64, gzip, json, re
+          html = open("data/dealhunter-scan.html", encoding="utf-8").read()
+          snap = re.search(r"window.__DH_SNAPSHOT__ = (.*?);</script>", html, re.S).group(1)
+          blob = base64.b64encode(gzip.compress(snap.encode())).decode()
+          print("===SNAPSHOT-BEGIN===")
+          for i in range(0, len(blob), 2000):
+              print(blob[i:i + 2000])
+          print("===SNAPSHOT-END===")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dealhunter-scan
+          path: |
+            deal-hunter/data/dealhunter-scan.html
+            deal-hunter/data/dealhunter.sqlite
+          if-no-files-found: ignore
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: deal-hunter/data
+          key: dealhunter-db-${{ github.run_id }}

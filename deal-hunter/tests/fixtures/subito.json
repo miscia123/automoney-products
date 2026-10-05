@@ -1,0 +1,17 @@
+{"count_all": 2, "lines": 2, "start": 0, "ads": [
+ {"urn": "id:ad:1b2c3d4e-0000-0000-0000-000000000001:list:612345678",
+  "type": {"key": "s"}, "category": {"key": "16"},
+  "subject": "Bracciale oro giallo 18kt 750 grammi 40",
+  "body": "Vendo bracciale in oro giallo 18 kt, peso 40 grammi, punzonato 750. Visionabile a Milano, possibile verifica presso orafo.",
+  "features": [
+    {"uri": "/price", "label": "Prezzo", "values": [{"key": "2600", "value": "2.600 €"}]},
+    {"uri": "/item_condition", "label": "Condizione", "values": [{"key": "20", "value": "Ottime condizioni"}]}
+  ],
+  "urls": {"default": "https://www.subito.it/abbigliamento-e-accessori/bracciale-oro-milano-612345678.htm"},
+  "images": [{"cdn_base_url": "https://images.sbito.it/api/v1/sbt-ads-images-pro/images/aa/aa111"}],
+  "dates": {"display_iso8601": "2026-10-05T09:12:00+02:00"},
+  "geo": {"region": {"value": "Lombardia"}, "city": {"value": "Milano", "short_name": "MI"}},
+  "advertiser": {"user_id": "123", "name": "Mario", "company": false, "type": 0}},
+ {"urn": "id:ad:xx:list:612345679", "subject": "Scatola rolex vuota",
+  "features": [], "urls": {"default": "https://www.subito.it/x.htm"}, "advertiser": {"company": true}}
+]}

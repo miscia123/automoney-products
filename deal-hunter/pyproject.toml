@@ -1,0 +1,33 @@
+[project]
+name = "dealhunter"
+version = "0.1.0"
+description = "Scraper periodico di aste e marketplace per trovare affari su preziosi e collezionismo, con verifica sui prezzi venduti"
+requires-python = ">=3.11"
+dependencies = [
+  "curl_cffi>=0.7",
+  "selectolax>=1.0",
+  "PyYAML>=6.0",
+  "anthropic>=1.0",
+  "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+browser = ["playwright>=1.40"]  # Chrono24, Buyee e qualsiasi sorgente con use_browser
+
+[project.scripts]
+dealhunter = "dealhunter.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["dealhunter*"]
+
+[tool.setuptools.package-data]
+dealhunter = ["dashboard.html"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

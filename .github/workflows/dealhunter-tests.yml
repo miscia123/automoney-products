@@ -1,0 +1,21 @@
+name: dealhunter-tests
+on:
+  pull_request:
+    paths: ["deal-hunter/**", ".github/workflows/dealhunter-*.yml"]
+  push:
+    branches: [main]
+    paths: ["deal-hunter/**"]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deal-hunter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ".[dev]"
+      - run: pytest -q
