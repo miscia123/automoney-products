@@ -25,7 +25,7 @@ jobs:
     env:
       DEALHUNTER_DEBUG_HTTP: "1"
       # campioni HTML nei log per le fonti il cui connettore va adattato alla pagina vera
-      DEALHUNTER_DUMP_HOSTS: ${{ vars.DEALHUNTER_DUMP_HOSTS || 'forumfree,astegiudiziarie,fallcoaste' }}
+      DEALHUNTER_DUMP_HOSTS: ${{ vars.DEALHUNTER_DUMP_HOSTS || 'liveauctioneers,collecting,astegiudiziarie' }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

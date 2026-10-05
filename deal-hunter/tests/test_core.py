@@ -538,3 +538,29 @@ async def test_market_asks_index_values_underpriced_watch(engine):
     assert d is not None and all(c.source.startswith("mercato_") and c.kind == "ask" for c in d.valuation.comps)
     assert 9000 < d.valuation.fair_value < 10000  # mediana richiesta ~10.750 scontata del 12%
     assert d.profit > 1000 and d.level in ("good", "watch")
+
+
+def test_bullion_false_positives_from_live_scan():
+    """Casi veri del primo scan multi-categoria valutati male."""
+    def x(title, desc="", country="IT"):
+        return extract(L(title, desc=desc, country=country))
+
+    eagle = x("American Eagle Silber Münze 1oz (20St.) aus 2020", country="DE")
+    assert eagle.fine_gold_g is None and eagle.fine_silver_g == pytest.approx(622.07)  # 20 once d'argento
+    assert x("Südafrika Münze Krugerrand Ag", country="DE").fine_gold_g is None
+    assert x("Krugerrand 1/2 oz goud", country="NL").fine_gold_g == pytest.approx(15.55, abs=0.01)
+    assert x("Maple Leaf | 1/4 Unze | Goldmünze", country="AT").fine_gold_g == pytest.approx(7.776, abs=0.01)
+    assert x("Wiener Philharmoniker 1996", "Gold 1/10 Unze 3,11 g", "AT").fine_gold_g == pytest.approx(3.11, abs=0.01)
+    assert x("1/2 sterlina oro 1884 regina Vittoria").fine_gold_g == pytest.approx(3.6612)
+    assert x("Krugerrand 1 oz oro 2023").fine_gold_g == pytest.approx(31.1035)
+    # "Gr. 64" in tedesco è la misura dell'anello, non il peso
+    assert x("Cartier Love Ring 18k Gold Full Set Gr. 64", country="DE").grams is None
+    assert x("bracciale oro 18kt gr. 12").grams == 12
+    # orologio acciaio e oro: niente valore di fusione
+    assert x("Orologio Bulgari in acciaio e oro rosa 18kt", "peso 177 g").karat is None
+    # chi cerca o segnala un furto non vende
+    assert "wanted" in x("NGC KRUGERRAND 1967 GESTOLEN ! -> HOGE BELONING!", country="NL").flags
+    assert x("Gemelli oro 18kt 1 oz", "14,2 g").category != Category.BULLION_COIN
+    spam = x("+++ TOP MÜNZE +++ 3 Oz Unzen PP Silber Gold Goldbarren Philharmoniker Eagle Krügerrand Maple Leaf", country="AT")
+    assert "keyword_spam" in spam.flags
+    assert x("Sterline e marenghi in oro").bullion_name.startswith("marengo")

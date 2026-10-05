@@ -13,7 +13,7 @@ from .models import Attributes, Category, Listing
 # --- monete d'oro/argento da investimento: grammi di metallo fino --------------
 # (nome, regex, oro_fino_g, argento_fino_g)
 BULLION: list[tuple[str, str, float, float]] = [
-    ("mezza sterlina", r"mezza\s+sterlin|half\s+sovereign", 3.6612, 0),
+    ("mezza sterlina", r"mezza\s+sterlin|half\s+sovereign|1\s*/\s*2\s+sterlin|halbe?\s+sovereign", 3.6612, 0),
     ("sterlina", r"sterlin[ae]\b|sovereign", 7.3224, 0),
     ("krugerrand 1oz", r"krugerrand", 31.1035, 0),
     ("50 pesos", r"50\s*pesos", 37.4995, 0),
@@ -29,13 +29,14 @@ BULLION: list[tuple[str, str, float, float]] = [
     ("50 lire oro", r"50\s*lire.*oro", 14.5161, 0),
     ("10 franchi/lire oro", r"10\s*(franchi|francs|lire).*oro|oro.*10\s*(franchi|francs|lire)", 2.9032, 0),
     ("marengo 20 franchi/lire", r"marengh?[oi]|napoleon[ei]?\b|vreneli|20\s*(franchi|francs|lire)\b.*oro|oro.*20\s*(franchi|francs|lire)|20\s*francs?\s+or", 5.8065, 0),
-    ("oncia oro 1oz", r"(1\s*oz|un'?oncia|1\s*oncia).*(oro|gold)|(maple\s*leaf|philharmoniker|britannia|american\s+eagle|buffalo|kangaroo|canguro).*(oro|gold|1\s*oz)", 31.1035, 0),
+    ("oncia oro 1oz", r"(1\s*oz|un'?oncia|1\s*oncia).*(oro|gold)|(maple\s*leaf|philharmoniker|britannia|american\s+eagle|buffalo|kangaroo|canguro|panda|libertad|lunar|nugget).*(oro|gold|goud|\boz\b|1\s*oz|unze|oncia)|"
+                      r"(\boz\b|unzen?|onc[ei]a|ounce).*\b(oro|gold|goud)\b|\b(oro|gold|goud)\b.*(\boz\b|unzen?\b|onc[ei]a|ounce)", 31.1035, 0),
     ("1000 lire argento", r"1000\s*lire.*argento", 0, 12.191),
     ("500 lire argento", r"500\s*lire.*argento|500\s*lire\s+caravell", 0, 9.185),
     ("5 lire argento scudo", r"5\s*lire.*(argento|scudo)", 0, 22.5),
     ("20 lire littore", r"20\s*lire.*littore", 0, 16.0),
     ("10 lire biga", r"10\s*lire.*biga", 0, 8.35),
-    ("oncia argento 1oz", r"(1\s*oz|un'?oncia|1\s*oncia).*(argento|silver)|(maple|philharmoniker|britannia|eagle|kookaburra).*(argento|silver)", 0, 31.1035),
+    ("oncia argento 1oz", r"(1\s*oz|un'?oncia|1\s*oncia).*(argento|silver)|(maple|philharmoniker|britannia|eagle|kookaburra).*(argento|silver|silber|zilver)", 0, 31.1035),
 ]
 BULLION_RE = [(n, re.compile(p, re.I), g, s) for n, p, g, s in BULLION]
 
@@ -127,7 +128,8 @@ JEWELRY_MODELS = {
 }
 JEWELRY_WORDS = re.compile(
     r"anello|collana|bracciale|orecchin|ciondolo|catena|collier|spilla|parure|fede|solitario|"
-    r"ring|necklace|bracelet|earring|pendant|brooch|schmuck|ohrring|halskette|armband|bague|collier",
+    r"ring|necklace|bracelet|earring|pendant|brooch|schmuck|ohrring|halskette|armband|bague|collier|"
+    r"gemelli|manschettenkn|cufflink",
     re.I,
 )
 WATCH_WORDS = re.compile(r"orologio|\bwatch\b|armbanduhr|\buhr\b|montre|chronograph|cronografo", re.I)
@@ -142,6 +144,18 @@ ART_WORDS = re.compile(r"dipinto|olio su tela|olio su tavola|quadro\s+(d.autore|
                        r"serigrafia|scultura|acquerello|painting|lithograph", re.I)
 GOLD_WORDS = re.compile(r"\boro\b|\bgold\b|\bgolden\b|\bgelbgold|weißgold|rotgold|\bor\s+(jaune|blanc|rose)", re.I)
 SILVER_WORDS = re.compile(r"argento|\bsilver\b|silber|\bargent\b", re.I)
+# frazioni d'oncia (1/10 oz, 1/4 Unze, mezza oncia...): valgono la frazione, non l'oncia intera
+FRACTION_RE = re.compile(r"\b1\s*/\s*(2|4|5|10|20|25|50|100)\s*-?\s*(?:oz|unzen?|onc[ei]a|once|ounce|onza|ons)\b|"
+                         r"\b(mezz[ao]|half|halbe?)\s+(?:oz|unzen?|onc[ei]a|ounce)\b", re.I)
+# monete d'investimento in argento con lo stesso nome di quelle d'oro (Krugerrand Silber, Silver Eagle, "Ag")
+SILVER_COIN_RE = re.compile(r"argento|silver|silber|zilver|\bag\b|feinsilber", re.I)
+GOLD_COIN_RE = re.compile(r"\boro\b|\bgold\b|\bgoud\b|\bor\b|\bau\b", re.I)
+# titoli imbottiti di nomi di monete ("Philharmoniker Eagle Krügerrand Maple Leaf..."): non si sa cosa vendono
+COIN_NAMES_RE = re.compile(r"philharmoniker|eagle|kr[uü]gerrand|maple|kookaburra|britannia|panda|bison|buffalo|"
+                           r"libertad|lunar|nugget|kangaroo|sovereign|sterlin|marengh|vreneli|dukat", re.I)
+# annunci di chi cerca o di oggetti rubati: il prezzo non è un'offerta di vendita
+WANTED_RE = re.compile(r"^\W*(cerco|compro|acquisto|suche|kaufe|ankauf|gezocht|zoek|wtb|cherche|j.ach[eè]te)\b|"
+                       r"gestolen|gestohlen|\brubat[oa]\b|\bstolen\b|belohnung|beloning|ricompensa", re.I)
 BAR_WORDS = re.compile(r"lingott|lingotin|\bbarr?a\b|\bbar\b|barren|gold\s*bar", re.I)
 
 FAKE_RE = re.compile(
@@ -260,11 +274,18 @@ def extract(listing: Listing) -> Attributes:
         else:
             karat = {375: 9, 585: 14, 750: 18, 916: 22, 999: 24}[int(m.group(2))]
         break
-    a.grams = grams = _grams(full)
+    a.grams = grams = _grams(full, german=listing.country in ("DE", "AT", "CH"))
+    if WANTED_RE.search(title):
+        a.flags.add("wanted")
+    if len({m.group(0).lower()[:5] for m in COIN_NAMES_RE.finditer(title)}) >= 3:
+        a.flags.add("keyword_spam")
 
     # 1) monete/lingotti da investimento
-    for name, rx, gold_g, silver_g in BULLION_RE:
-        if rx.search(title) or (rx.search(full) and COIN_WORDS.search(full)):
+    jewel = JEWELRY_WORDS.search(title) and not (COIN_WORDS.search(title) or BAR_WORDS.search(title))
+    # più monete nel titolo ("sterline e marenghi"): si valuta la meno pregiata, per prudenza
+    in_title = sorted((b for b in BULLION_RE if b[1].search(title)), key=lambda b: (b[2] or 0) * 1000 + (b[3] or 0))
+    for name, rx, gold_g, silver_g in ([] if jewel else in_title[:1] or BULLION_RE):
+        if rx.search(title) or (rx.search(full) and (COIN_WORDS.search(full) or FRACTION_RE.search(full))):
             a.category = Category.BULLION_COIN
             a.bullion_name = name
             a.fine_gold_g = gold_g or None
@@ -276,6 +297,8 @@ def extract(listing: Listing) -> Attributes:
                 a.flags.add("lot")
             a.query_text = name
             break
+    if a.category == Category.BULLION_COIN:
+        _fix_bullion(a, title, karat, full)
     if a.category == Category.OTHER and BAR_WORDS.search(title) and GOLD_WORDS.search(title) and grams and not plated:
         a.category = Category.BULLION_COIN
         a.bullion_name = f"lingotto oro {grams:g} g"
@@ -333,6 +356,8 @@ def extract(listing: Listing) -> Attributes:
     if a.category in (Category.GOLD, Category.JEWELRY, Category.WATCH) and not plated:
         if GOLD_WORDS.search(full) or karat:
             a.karat = karat or (18 if GOLD_WORDS.search(full) and "750" in full else None)
+        if a.category == Category.WATCH and material(title) not in ("gold", "diamonds"):
+            a.karat = None  # acciaio e oro o acciaio con dettagli in oro: niente valore di fusione
     if a.category in (Category.GOLD, Category.JEWELRY) and not plated and (m := FINE_GOLD_RE.search(full)):
         g = _num(next(x for x in m.groups() if x))
         if 0.1 <= g <= 5000:
@@ -357,11 +382,17 @@ def extract(listing: Listing) -> Attributes:
     return a
 
 
-def _grams(text: str) -> float | None:
-    """Peso in grammi, evitando di scambiare il titolo (750, 925...) per un peso."""
+def _grams(text: str, german: bool = False) -> float | None:
+    """Peso in grammi, evitando di scambiare il titolo (750, 925...) per un peso.
+    In tedesco "Gr. 56" è la misura dell'anello (Größe), non il peso."""
     cands: list[float] = []
     for m in WEIGHT_WORD_RE.finditer(text):
-        cands.append(_num(m.group(1)))
+        if german and re.match(r"gr\b", m.group(0), re.I):
+            continue
+        g = _num(m.group(1))
+        if g.is_integer() and 1900 <= g <= 2035:
+            continue  # un anno, non un peso
+        cands.append(g)
     for m in GRAMS_RE.finditer(text):
         cands.append(_num(m.group(1)))
     for g in cands:
@@ -370,8 +401,33 @@ def _grams(text: str) -> float | None:
     return None
 
 
+def _fix_bullion(a: Attributes, title: str, karat: int | None, full: str = "") -> None:
+    """Corregge argento al posto dell'oro, frazioni d'oncia e pesi dichiarati più piccoli della moneta."""
+    if a.fine_gold_g and SILVER_COIN_RE.search(title) and not GOLD_COIN_RE.search(title):
+        # Krugerrand/Eagle/Maple/Philharmoniker d'argento: 1 oncia d'argento ciascuno
+        a.fine_silver_g, a.fine_gold_g = a.fine_gold_g, None
+        a.bullion_name = f"{a.bullion_name} (argento)".replace("oro ", "")
+        a.query_text = a.bullion_name
+    per_unit = (a.fine_gold_g or a.fine_silver_g or 0) / max(_quantity(title), 1)
+    frac = None
+    if per_unit >= 25 and (m := FRACTION_RE.search(title) or FRACTION_RE.search(full)):
+        frac = 1 / int(m.group(1)) if m.group(1) else 0.5
+    elif per_unit >= 25 and a.grams and a.grams < 0.8 * per_unit:
+        # peso dichiarato più piccolo dell'oncia: vale il peso (con il titolo, se indicato)
+        frac = a.grams * (KARAT_FINENESS[karat] if karat else 0.9999) / per_unit
+    elif a.fine_silver_g and a.grams and a.grams > per_unit * 1.5:
+        a.fine_silver_g = a.grams  # "622 Gramm Feinsilber", "3 Oz 93,3 g": vale il peso totale dichiarato
+    if frac:
+        if a.fine_gold_g:
+            a.fine_gold_g = round(a.fine_gold_g * frac, 4)
+        if a.fine_silver_g:
+            a.fine_silver_g = round(a.fine_silver_g * frac, 4)
+        a.bullion_name = f"{a.bullion_name} x{frac:.3g}"
+        a.query_text = a.bullion_name
+
+
 def _quantity(title: str) -> int:
-    m = re.search(r"\b(\d{1,3})\s*(x|pz|pezzi|monete|sterline|marenghi)\b", title, re.I)
+    m = re.search(r"\b(\d{1,3})\s*(x|pz|pezzi|monete|sterline|marenghi|st\.?|stk\.?|stück|pcs)(?=\W|$)", title, re.I)
     if m:
         n = int(m.group(1))
         return n if 1 < n <= 500 else 1

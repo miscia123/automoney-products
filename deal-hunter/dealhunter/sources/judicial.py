@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 PVP_API = "https://pvp.giustizia.it/ric-496b258c-986a1b71/ric-ms/ricerca/vendite"
 PVP_DETAIL = "https://pvp.giustizia.it/pvp/it/detail_annuncio.page?idAnnuncio={id}"
 AG_API = "https://webapi.astegiudiziarie.it/api/Search"
-AG_HEADERS = {"Content-Type": "application/json", "Origin": "https://www.astegiudiziarie.it",
+AG_HEADERS = {"Content-Type": "application/json", "Accept": "application/json", "Origin": "https://www.astegiudiziarie.it",
               "Referer": "https://www.astegiudiziarie.it/"}
 FALLCOASTE = "https://www.fallcoaste.it"
 FALLCOASTE_CATS = ["/categoria/orologi-e-gioielli-245.html", "/categoria/preziosi-635.html",

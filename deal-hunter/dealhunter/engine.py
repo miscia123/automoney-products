@@ -235,12 +235,16 @@ class Engine:
     # --- valutazione -----------------------------------------------------------------
     async def evaluate(self, listing: Listing) -> Deal | None:
         attrs = extract(listing)
-        skip = ("fake_risk" in attrs.flags or "part" in attrs.flags
+        skip = ("fake_risk" in attrs.flags or "part" in attrs.flags or "wanted" in attrs.flags
                 or ("plated" in attrs.flags and attrs.category in (Category.GOLD, Category.BULLION_COIN))
                 or attrs.category == Category.OTHER
                 or (listing.price < self.cfg["evaluation"].get("min_price_eur", 20) and listing.kind != SaleKind.AUCTION))
         if skip:
             self.db.mark_skipped(listing)
+            return None
+        if "keyword_spam" in attrs.flags:
+            self.db.save_unvalued(listing, attrs.category.value,
+                                  "titolo pieno di nomi di monete diverse: non si capisce cosa vende, guarda a mano", retry=False)
             return None
         comps = await self.comps.get(listing, attrs)
         val = value(listing, attrs, comps, self.market, self.cfg["comps"].get("min_similarity", 0.3))
