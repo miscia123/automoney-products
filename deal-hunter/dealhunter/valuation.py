@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import statistics
 
-from .extract import FAKE_RE, FLAG_RE, KARAT_FINENESS, PARTS_RE, PLATED_RE, material, similarity
+from .extract import FAKE_RE, FLAG_RE, KARAT_FINENESS, PARTS_RE, PLATED_RE, _quantity, material, similarity
 from .market import Market
 from .models import Attributes, Category, Comparable, Listing, Valuation
 
@@ -119,6 +119,11 @@ def value(listing: Listing, attrs: Attributes, comps: list[Comparable], market: 
                 conf = max(conf, 0.85 if (attrs.grams and attrs.karat) or attrs.fine_gold_g else 0.5)
                 method = "valore dell'oro fino (peso x titolo x spot)"
         elif attrs.category == Category.BULLION_COIN:
+            qty = _quantity(listing.title) if "lot" in attrs.flags else 1
+            if qty > 1 and listing.price < melt * 0.5 and listing.price >= melt / qty * 0.6:
+                # "5x Krügerrand" a 3.700 €: il prezzo è per pezzo, si valuta un pezzo solo
+                melt = melt / qty
+                notes.append(f"prezzo per pezzo: valutata 1 moneta su {qty}")
             fair_melt = melt * (1 + BULLION_PREMIUM)
             if fair is None or abs(fair - fair_melt) / fair_melt > 0.5:
                 fair, low, high = fair_melt, melt, melt * 1.08

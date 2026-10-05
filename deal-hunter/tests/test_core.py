@@ -578,3 +578,20 @@ def test_eval_version_resets_old_valuations(engine):
     row = engine.db.conn.execute("SELECT last_eval, last_level, deal_json FROM listings WHERE key=?", (l.key,)).fetchone()
     assert tuple(row) == (None, None, None) and engine.db.kv_get("eval_version") == EVAL_VERSION
     assert engine.db.needs_eval(l, 3600)  # al prossimo giro viene rivalutato
+
+
+def test_more_false_positives_from_live_scan(market):
+    def x(title, desc="", country="DE"):
+        return extract(L(title, desc=desc, country=country))
+
+    sov = x("Goldmünze Sovereign von 1985 - Proof Prägung (Auflage 17.242St)")
+    assert sov.fine_gold_g == pytest.approx(7.3224)  # la tiratura non è una quantità
+    assert x("PLATIN - 2019 (!) - 1/25 Unze Wiener Philharmoniker- nur 2.034 Stück Auflage!", country="AT").category \
+        != Category.BULLION_COIN
+    assert x("Bulgari Serpenti Armband Weißgold Diamanten Smaragde 2020 Gr. S").grams is None
+    steyr = x("Steyr Werke 14k - 585 Gold Medaille 1972 / Münze Barren Goldbarren", "12 g", "AT")
+    assert steyr.fine_gold_g == pytest.approx(12 * 0.585, abs=0.01)
+    # "5x Krügerrand" a 3.700 €: prezzo per pezzo, non un affare da 5 once
+    l = L("5x Krügerrand Oz Gold Unze Goldmünze", 3700, country="DE")
+    v = value(l, extract(l), [], market)
+    assert v.fair_value == pytest.approx(31.1035 * 100 * 1.03, rel=0.01) and "per pezzo" in v.notes[0]

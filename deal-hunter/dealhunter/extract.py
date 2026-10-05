@@ -297,12 +297,17 @@ def extract(listing: Listing) -> Attributes:
                 a.flags.add("lot")
             a.query_text = name
             break
+    if a.category == Category.BULLION_COIN and re.search(r"platin|platinum|platino|palladi", title, re.I) \
+            and not GOLD_COIN_RE.search(title):
+        # platino/palladio: niente prezzo spot affidabile qui, si valuta come moneta da collezione
+        a.category, a.fine_gold_g, a.fine_silver_g, a.bullion_name = Category.COIN, None, None, None
+        a.query_text = ""
     if a.category == Category.BULLION_COIN:
         _fix_bullion(a, title, karat, full)
     if a.category == Category.OTHER and BAR_WORDS.search(title) and GOLD_WORDS.search(title) and grams and not plated:
         a.category = Category.BULLION_COIN
         a.bullion_name = f"lingotto oro {grams:g} g"
-        a.fine_gold_g = grams * 0.9999
+        a.fine_gold_g = grams * (KARAT_FINENESS[karat] if karat and karat < 24 else 0.9999)
         a.query_text = f"lingotto oro {grams:g} g"
 
     # 2) carte
@@ -394,7 +399,10 @@ def _grams(text: str, german: bool = False) -> float | None:
             continue  # un anno, non un peso
         cands.append(g)
     for m in GRAMS_RE.finditer(text):
-        cands.append(_num(m.group(1)))
+        g = _num(m.group(1))
+        if g.is_integer() and 1900 <= g <= 2035:
+            continue  # "2020 Gr. S": anno e misura, non 2 chili
+        cands.append(g)
     for g in cands:
         if 0.2 <= g <= 5000 and g not in FINENESS_NUMBERS:
             return g
@@ -427,7 +435,11 @@ def _fix_bullion(a: Attributes, title: str, karat: int | None, full: str = "") -
 
 
 def _quantity(title: str) -> int:
-    m = re.search(r"\b(\d{1,3})\s*(x|pz|pezzi|monete|sterline|marenghi|st\.?|stk\.?|stück|pcs)(?=\W|$)", title, re.I)
+    # niente numeri attaccati a punti o cifre ("Auflage 17.242 St", "2.034 Stück" sono tirature, non quantità)
+    m = re.search(r"(?<![\d.,])\b(\d{1,3})\s*(x|pz|pezzi|monete|sterline|marenghi|st\.?|stk\.?|stück|pcs)(?=\W|$)",
+                  title, re.I)
+    if m and re.search(r"auflage|tiratura|mintage|limit", title[max(0, m.start() - 25):m.start()], re.I):
+        return 1
     if m:
         n = int(m.group(1))
         return n if 1 < n <= 500 else 1

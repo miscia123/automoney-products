@@ -145,7 +145,10 @@ class CompsEngine:
         else:
             return []
         out = []
+        ref_rx = re.compile(rf"(?<![0-9a-z]){re.escape(attrs.reference.lower())}(?![0-9])") if match == "ref" else None
         for r in self.db.asks_like(patterns, listing.key):
+            if ref_rx and not ref_rx.search(r["title"].lower()):
+                continue  # "6300" non deve pescare i "126300"
             try:
                 eur = self.market.to_eur(float(r["price"]), r["currency"] or "EUR")
             except (ValueError, TypeError):
