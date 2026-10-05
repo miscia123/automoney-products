@@ -145,7 +145,7 @@ ART_WORDS = re.compile(r"dipinto|olio su tela|olio su tavola|quadro\s+(d.autore|
 GOLD_WORDS = re.compile(r"\boro\b|\bgold\b|\bgolden\b|\bgelbgold|weißgold|rotgold|\bor\s+(jaune|blanc|rose)", re.I)
 SILVER_WORDS = re.compile(r"argento|\bsilver\b|silber|\bargent\b", re.I)
 # frazioni d'oncia (1/10 oz, 1/4 Unze, mezza oncia...): valgono la frazione, non l'oncia intera
-FRACTION_RE = re.compile(r"\b1\s*/\s*(2|4|5|10|20|25|50|100)\s*-?\s*(?:oz|unzen?|onc[ei]a|once|ounce|onza|ons)\b|"
+FRACTION_RE = re.compile(r"\b1\s*/\s*(2|4|5|10|20|25|50|100|200|500|1000)\s*-?\s*(?:oz|unzen?|onc[ei]a|once|ounce|onza|ons)\b|"
                          r"\b(mezz[ao]|half|halbe?)\s+(?:oz|unzen?|onc[ei]a|ounce)\b", re.I)
 # monete d'investimento in argento con lo stesso nome di quelle d'oro (Krugerrand Silber, Silver Eagle, "Ag")
 SILVER_COIN_RE = re.compile(r"argento|silver|silber|zilver|\bag\b|feinsilber", re.I)
@@ -418,7 +418,14 @@ def _fix_bullion(a: Attributes, title: str, karat: int | None, full: str = "") -
         a.query_text = a.bullion_name
     per_unit = (a.fine_gold_g or a.fine_silver_g or 0) / max(_quantity(title), 1)
     frac = None
-    if per_unit >= 25 and (m := FRACTION_RE.search(title) or FRACTION_RE.search(full)):
+    m = FRACTION_RE.search(title)
+    if m and m.group(1) and per_unit < 25 and a.fine_gold_g:
+        # "Sovereign 1/200 Oz": vale la frazione d'oncia dichiarata, non la moneta di cui porta il nome
+        a.fine_gold_g = round(31.1035 / int(m.group(1)) * max(_quantity(title), 1), 4)
+        a.bullion_name = f"oro 1/{m.group(1)} oz"
+        a.query_text = a.bullion_name
+        return
+    if per_unit >= 25 and (m := m or FRACTION_RE.search(full)):
         frac = 1 / int(m.group(1)) if m.group(1) else 0.5
     elif per_unit >= 25 and a.grams and a.grams < 0.8 * per_unit:
         # peso dichiarato più piccolo dell'oncia: vale il peso (con il titolo, se indicato)

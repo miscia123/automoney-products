@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -278,7 +279,12 @@ class DB:
         ).fetchone()
         if row is None or time.time() - row["fetched_at"] > ttl_s:
             return None
-        return [Comparable(**c) for c in json.loads(row["comps_json"])]
+        out = []
+        for c in json.loads(row["comps_json"]):
+            if c.get("sold_at"):  # salvato come testo ISO: torna datetime
+                c["sold_at"] = datetime.fromisoformat(c["sold_at"])
+            out.append(Comparable(**c))
+        return out
 
     def put_comps(self, qkey: str, comps: list[Comparable]) -> None:
         payload = json.dumps(

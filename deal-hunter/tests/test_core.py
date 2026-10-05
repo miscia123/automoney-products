@@ -595,3 +595,12 @@ def test_more_false_positives_from_live_scan(market):
     l = L("5x Krügerrand Oz Gold Unze Goldmünze", 3700, country="DE")
     v = value(l, extract(l), [], market)
     assert v.fair_value == pytest.approx(31.1035 * 100 * 1.03, rel=0.01) and "per pezzo" in v.notes[0]
+
+
+def test_tiny_fraction_and_cached_sold_dates(tmp_path):
+    a = extract(L("Ruanda. 10 Frw 2015 - Sovereign- 1/200 Oz (.999) (Senza prezzo di riserva)", 9, source="catawiki"))
+    assert a.fine_gold_g == pytest.approx(31.1035 / 200, rel=0.01)
+    db = DB(tmp_path / "c.sqlite")
+    sold = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    db.put_comps("k", [Comparable(price_eur=100, title="x", source="s", kind="sold", sold_at=sold)])
+    assert db.get_comps("k", 3600)[0].sold_at == sold  # dalla cache torna un datetime, non una stringa

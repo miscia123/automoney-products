@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # (prudente: sulle aste online molto seguite il prezzo finale arriva vicino al valore)
 # da cambiare quando cambia la logica di estrazione o di valutazione: al giro successivo tutto viene
 # rivalutato e le valutazioni vecchie (magari sbagliate) spariscono dalla dashboard
-EVAL_VERSION = "2026-10-05.3"
+EVAL_VERSION = "2026-10-05.4"
 
 AUCTION_COMPETITION = {"catawiki": 0.8, "ebay": 0.75, "zoll": 0.7, "affide": 0.7, "judicial": 0.3,
                        "buyee": 0.7, "liveauctioneers": 0.7, "watchcollecting": 0.8, "ricardo": 0.7}
