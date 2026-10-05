@@ -112,6 +112,19 @@ JEWELRY_BRANDS = {
     "Chopard": r"chopard", "Boucheron": r"boucheron", "Messika": r"messika", "Dodo": r"\bdodo\b",
     "Graff": r"\bgraff\b", "Harry Winston": r"harry\s+winston", "Chantecler": r"chantecler",
 }
+JEWELRY_MODELS = {
+    "Cartier": ["juste un clou", "love", "trinity", "panthere", "panthère", "clash", "ecrou"],
+    "Bulgari": ["serpenti", "b.zero1", "bzero1", "b zero1", "divas dream", "tubogas", "fiorever"],
+    "Van Cleef & Arpels": ["vintage alhambra", "sweet alhambra", "magic alhambra", "alhambra", "perlée", "perlee",
+                           "frivole"],
+    "Tiffany": ["t wire", "hardwear", "knot", "smile", "return to tiffany", "victoria", "elsa peretti"],
+    "Pomellato": ["nudo", "iconica", "sabbia", "m'ama non m'ama", "tango"],
+    "Damiani": ["belle epoque", "d.side", "margherita"],
+    "Chopard": ["happy diamonds", "ice cube", "happy hearts"],
+    "Messika": ["move uno", "move noa", "move"],
+    "Dodo": ["granelli", "nodo"],
+    "Buccellati": ["macri", "opera"],
+}
 JEWELRY_WORDS = re.compile(
     r"anello|collana|bracciale|orecchin|ciondolo|catena|collier|spilla|parure|fede|solitario|"
     r"ring|necklace|bracelet|earring|pendant|brooch|schmuck|ohrring|halskette|armband|bague|collier",
@@ -189,6 +202,7 @@ def material(title: str) -> str:
 
 GRAMS_RE = re.compile(r"(\d{1,4}(?:[.,]\d{1,3})?)\s*(?:g\b|gr\b|grs\b|gramm[io]?\b|grams?\b|gramm\b)", re.I)
 WEIGHT_WORD_RE = re.compile(r"(?:peso|pesa|weight|gewicht|poids|grammi|gr\.?)\s*(?:totale|lordo|netto|di|ca\.?|circa|:)?\s*"
+                            r"(?:(?:complessivo|totale)\s*)?(?:g\b\.?|gr\b\.?|grammi\b)?\s*:?\s*"
                             r"(\d{1,4}(?:[.,]\d{1,3})?)", re.I)
 FINENESS_NUMBERS = {375, 585, 750, 800, 835, 900, 916, 925, 999}
 KARAT_RE = re.compile(r"\b(9|14|18|22|24)\s*(?:k|kt|ct|carati|karat)\b|\b(375|585|750|916|999)\b", re.I)
@@ -212,6 +226,11 @@ def _norm(text: str) -> str:
 
 def _num(s: str) -> float:
     return float(s.replace(",", "."))
+
+
+# oro fino dichiarato (Affide: "(#of16,97g)"; periti: "oro fino g 16,97", "16,97 g di oro fino")
+FINE_GOLD_RE = re.compile(r"#of\s*(\d+(?:[.,]\d+)?)\s*g|oro\s+fino\s*(?:di\s*)?(?:g|gr|grammi)\.?\s*(\d+(?:[.,]\d+)?)|"
+                          r"(\d+(?:[.,]\d+)?)\s*(?:g|gr|grammi)\.?\s+(?:di\s+)?oro\s+fino", re.I)
 
 
 def extract(listing: Listing) -> Attributes:
@@ -241,7 +260,7 @@ def extract(listing: Listing) -> Attributes:
         else:
             karat = {375: 9, 585: 14, 750: 18, 916: 22, 999: 24}[int(m.group(2))]
         break
-    a.grams = _grams(full)
+    a.grams = grams = _grams(full)
 
     # 1) monete/lingotti da investimento
     for name, rx, gold_g, silver_g in BULLION_RE:
@@ -305,6 +324,8 @@ def extract(listing: Listing) -> Attributes:
         if jbrand:
             a.category = Category.JEWELRY
             a.brand = jbrand
+            low = title.lower()
+            a.model = next((m for m in JEWELRY_MODELS.get(jbrand, []) if m in low), None)
         elif is_gold and (karat or grams):
             a.category = Category.GOLD
         elif JEWELRY_WORDS.search(title):
@@ -312,6 +333,10 @@ def extract(listing: Listing) -> Attributes:
     if a.category in (Category.GOLD, Category.JEWELRY, Category.WATCH) and not plated:
         if GOLD_WORDS.search(full) or karat:
             a.karat = karat or (18 if GOLD_WORDS.search(full) and "750" in full else None)
+    if a.category in (Category.GOLD, Category.JEWELRY) and not plated and (m := FINE_GOLD_RE.search(full)):
+        g = _num(next(x for x in m.groups() if x))
+        if 0.1 <= g <= 5000:
+            a.fine_gold_g = g
     if a.category in (Category.GOLD, Category.JEWELRY) and SILVER_WORDS.search(full) and not a.karat:
         if m := SILVER_FINENESS_RE.search(full):
             a.silver_fineness = int(m.group(1))

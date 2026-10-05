@@ -245,7 +245,6 @@ def test_catawiki_closed_lot_result():
 async def test_harvest_builds_own_sold_history(engine):
     """Il bot rilegge le aste chiuse e il prezzo pagato diventa un comparabile per i lotti futuri."""
     from dealhunter.comps import CompsEngine
-    from dealhunter.models import Attributes
 
     past = datetime.now(timezone.utc) - timedelta(hours=2)
     l = Listing(source="catawiki", source_id="91000001", url="https://www.catawiki.com/it/l/91000001",
@@ -270,14 +269,89 @@ async def test_harvest_builds_own_sold_history(engine):
 
 # --- portali orologi --------------------------------------------------------------------
 def test_kleinanzeigen_parser():
+    """Layout reale 2026 (article[data-adid], prezzo in p.text-title3, ld+json)."""
     from dealhunter.sources.watches import parse_kleinanzeigen
 
     ls = parse_kleinanzeigen((FIX / "kleinanzeigen.html").read_text())
-    assert [l.source_id for l in ls] == ["2911111111", "2922222222"]  # niente top-ad né "Alternative Anzeigen"
-    om, rx = ls
-    assert om.price == 2950 and om.country == "DE" and "[trattabile]" in om.description  # prezzo barrato ignorato
-    assert om.url == "https://www.kleinanzeigen.de/s-anzeige/omega-speedmaster-professional-3570-50/2911111111-160-3331"
-    assert rx.raw["pickup_only"] and rx.description.startswith("[SOLO RITIRO IN GERMANIA]")
+    assert [l.source_id for l in ls] == ["3529723703", "3528902973", "3532268009"]  # niente "Alternative Anzeigen"
+    hulk, lc100, mk1 = ls
+    assert hulk.price == 22700 and hulk.country == "DE" and hulk.location == "10115 Berlin"
+    assert hulk.title == "Rolex Submariner Date Hulk 116610LV Full Set 2020"
+    assert hulk.url == "https://www.kleinanzeigen.de/s-anzeige/rolex-submariner-date-hulk-116610lv-full-set-2020/3529723703-157-3328"
+    assert hulk.images[0].startswith("https://img.kleinanzeigen.de/") and "Hulk" in hulk.description
+    assert lc100.raw["shipping"] and not lc100.raw["negotiable"]
+    assert mk1.price == 12500 and mk1.raw["negotiable"] and mk1.description.startswith("[trattabile]")
+    assert extract(hulk).reference == "116610LV"
+
+
+def test_affide_auction_lots_json():
+    from dealhunter.sources.auctions import parse_affide_auction
+
+    ls = parse_affide_auction((FIX / "affide_auction.html").read_text())
+    assert [l.source_id for l in ls] == ["810830", "810833", "817973"]  # il lotto chiuso è escluso
+    ear = ls[0]
+    assert ear.price == 105 and ear.kind == SaleKind.AUCTION and ear.url == "https://affide.it/c/lot-229/810830/"
+    assert ear.ends_at == datetime(2026, 10, 8, 8, 0, tzinfo=timezone.utc) and ear.images[0].startswith("https://affide.it/")
+    a = extract(ear)
+    assert a.category == Category.GOLD and a.karat == 18 and a.grams == 1.5
+    # "oro titolo inferiore (#of 12,81g)": vale l'oro fino dichiarato dal perito
+    a = extract(ls[2])
+    assert a.category == Category.GOLD and a.fine_gold_g and a.fine_gold_g < a.grams
+
+
+def test_zoll_list_and_lot():
+    from dealhunter.sources.auctions import parse_zoll_list, parse_zoll_lot
+
+    ls = parse_zoll_list((FIX / "zoll_list.html").read_text())
+    assert [l.source_id for l in ls] == ["982575", "982598", "983184"]
+    ring = ls[0]
+    assert ring.price == 420 and ring.bids == 0 and ring.location == "10965 Berlin" and ring.ends_at is not None
+    assert ring.url == "https://www.zoll-auktion.de/auktion/produkt/1_Ring_in_585f_Wei%C3%9Fgold_mit_Diamanten_und_Safiren_/982575"
+    assert extract(ring).karat == 14
+    base = Listing(source="zoll", source_id="983399", url="u", title="1 Armbanduhr Jaeger Le Coultre Reverso",
+                   price=4000, kind=SaleKind.AUCTION)
+    lot = parse_zoll_lot((FIX / "zoll_lot.html").read_text(), base)
+    assert lot.shipping == 30 and lot.ends_at.isoformat() == "2026-10-08T06:01:00+02:00"
+    assert "Referenz-Nr.: 250.1.86" in lot.description and "750er Gelbgold" in lot.description
+    assert lot.raw["seller"].startswith("Finanzamt")
+
+
+def test_fallcoaste_category_cards():
+    from dealhunter.sources.judicial import parse_fallcoaste_list
+
+    ls = parse_fallcoaste_list((FIX / "fallcoaste_list.html").read_text())
+    assert len(ls) == 3 and all(l.source_id.startswith("fc-") and l.url.startswith("https://") for l in ls)
+    b = ls[0]
+    assert b.price == 7902 and b.ends_at.isoformat() == "2026-10-07T12:00:00+02:00"
+    assert b.raw["tribunale"].startswith("Tribunale di Torino")
+    a = extract(b)
+    assert a.category == Category.GOLD and a.karat == 18 and a.grams == 87.8
+
+
+def test_forum_section_links():
+    from dealhunter.sources.watches import parse_forum_section
+
+    page = """<a href="/?t=111">Vendo Rolex Explorer 214270 full set</a>
+    <a href="/?t=111&st=15#lastpost">Re:Vendo Rolex Explorer</a>
+    <a href="/?t=222#newpost">[V] Omega Speedmaster 3570.50</a>
+    <a href="/?t=333">Compro Tudor Black Bay</a><a href="/?t=444">Regolamento Mercatini</a>"""
+    assert parse_forum_section(page) == {"111": "Vendo Rolex Explorer 214270 full set",
+                                         "222": "[V] Omega Speedmaster 3570.50"}
+
+
+def test_round_robin_categories():
+    from dealhunter.engine import _round_robin
+
+    items = [("w", 1), ("w", 2), ("w", 3), ("g", 1), ("b", 1), ("g", 2)]
+    assert _round_robin(items, lambda x: x[0]) == [("w", 1), ("g", 1), ("b", 1), ("w", 2), ("g", 2), ("w", 3)]
+
+
+def test_astegiudiziarie_body_is_complete():
+    from dealhunter.sources.judicial import ag_search_body
+
+    b = ag_search_body([11])
+    assert b["tipoRicerca"] == 2 and b["idTipologie"] == [11] and b["storica"] is False
+    assert {"noGeo", "searchOnMap", "vetrina", "priceMax", "listaIdLotto"} <= set(b)
 
 
 def test_marktplaats_willhaben_ricardo_parsers():

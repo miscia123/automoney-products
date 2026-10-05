@@ -200,7 +200,23 @@ class DB:
             d["status"], d["note"] = r["status"] or "nuovo", r["note"]
             out.append(d)
         out.sort(key=lambda d: d.get("score", 0), reverse=True)
-        return out[:limit]
+        if len(out) <= limit:
+            return out
+        # troppi annunci: prima tutti gli affari, poi il resto alternando le categorie (non solo orologi)
+        top = [d for d in out if d.get("level") in ("hot", "good", "watch")][:limit]
+        groups: dict[str, list[dict]] = {}
+        for d in out:
+            if d.get("level") not in ("hot", "good", "watch"):
+                groups.setdefault(d.get("category") or "?", []).append(d)
+        queues = list(groups.values())
+        while len(top) < limit and queues:
+            for q in list(queues):
+                if len(top) >= limit:
+                    break
+                top.append(q.pop(0))
+                if not q:
+                    queues.remove(q)
+        return top
 
     def counts(self, since_s: float) -> dict:
         t = time.time() - since_s

@@ -124,6 +124,11 @@ class Engine:
 
     # --- raccolta ------------------------------------------------------------------
     def queries_for(self, source: str) -> list[Query]:
+        """Query della watchlist per una sorgente, alternate per categoria (orologio, oro, monete, gioielli,
+        borse, carte, orologio, ...): se il tempo finisce a metà giro, nessuna categoria resta a zero."""
+        return _round_robin(self._queries_for(source), lambda q: q.category)
+
+    def _queries_for(self, source: str) -> list[Query]:
         out = []
         for item in self.watchlist.get("queries", []):
             srcs = item.get("sources")
@@ -377,27 +382,36 @@ class Engine:
         self.db.kv_set(f"lastok:{name}", t0)
         reeval = self.cfg["evaluation"].get("reeval_hours", 12) * 3600
         new_count = sum(1 for l in listings if not self.db.seen(l.key))
-        todo = [l for l in listings if self.db.needs_eval(l, reeval)]
+        # valutazione alternata per categoria: mai mille orologi prima del primo anello d'oro
+        todo = _round_robin([l for l in listings if self.db.needs_eval(l, reeval)],
+                            lambda l: l.category_hint or extract(l).category)
         self.progress[name].update(step="valutazione", done=0, total=len(todo))
         sem = asyncio.Semaphore(self.cfg["evaluation"].get("concurrency", 8))
+
+        quiet = self._quiet_now()
 
         async def one(l: Listing) -> Deal | None:
             async with sem:
                 try:
-                    return await self.evaluate(l)
+                    d = await self.evaluate(l)
+                    if d:
+                        # salvato e notificato subito: se il giro viene interrotto, il lavoro fatto resta
+                        self.db.save_eval(d)
+                        if self.db.should_alert(d) and (not quiet or d.level == "hot"):
+                            if await self.notifier.send_deal(d):
+                                self.db.mark_alerted(d)
+                    return d
                 except Exception as e:
-                    log.debug("valutazione fallita %s: %s", l.key, e)
+                    # mai in silenzio: un errore qui fa perdere annunci veri
+                    fails = self.progress[name].setdefault("eval_errors", 0) + 1
+                    self.progress[name]["eval_errors"] = fails
+                    if fails <= 3:
+                        log.warning("valutazione fallita %s: %s: %s", l.key, type(e).__name__, e, exc_info=fails == 1)
                     return None
                 finally:
                     self.progress[name]["done"] += 1
 
         deals = [d for d in await asyncio.gather(*(one(l) for l in todo)) if d]
-        quiet = self._quiet_now()
-        for d in deals:
-            self.db.save_eval(d)
-            if self.db.should_alert(d) and (not quiet or d.level == "hot"):
-                if await self.notifier.send_deal(d):
-                    self.db.mark_alerted(d)
         log.info("%s: %d annunci, %d nuovi/cambiati, %d valutati, %d alert-worthy in %.1fs", name,
                  len(listings), len(todo), len(deals), sum(d.level in ("hot", "good") for d in deals),
                  time.time() - t0)
@@ -509,6 +523,24 @@ class Engine:
             lines.append("⚠️ Sorgenti in errore: " + ", ".join(bad))
         await self.notifier.send_text("\n".join(lines))
         self.db.kv_set(key, True)
+
+
+def _round_robin(items: list, key) -> list:
+    """Riordina alternando i gruppi (stesso ordine relativo dentro ogni gruppo)."""
+    groups: dict = {}
+    for it in items:
+        groups.setdefault(key(it), []).append(it)
+    out = []
+    queues = list(groups.values())
+    i = 0
+    while queues:
+        q = queues[i % len(queues)]
+        out.append(q.pop(0))
+        if not q:
+            queues.remove(q)
+        else:
+            i += 1
+    return out
 
 
 def _hours_left(listing: Listing) -> float | None:

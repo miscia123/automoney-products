@@ -27,7 +27,9 @@ from .base import Query, Source, parse_price
 
 log = logging.getLogger(__name__)
 
-WATCHISH = (None, Category.WATCH, Category.JEWELRY, Category.GOLD)
+# categorie che si cercano anche sui mercati esteri (serve una query senza parole italiane o una traduzione)
+FOREIGN_OK = (None, Category.WATCH, Category.JEWELRY, Category.GOLD, Category.BULLION_COIN, Category.BAG,
+              Category.CARD)
 
 
 def _iso(v) -> datetime | None:
@@ -56,9 +58,11 @@ class Kleinanzeigen(Source):
 
     async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
-        if query.category not in WATCHISH or not q:
+        if query.category not in FOREIGN_OK or not q:
             return []
-        params = {"keywords": q, "categoryId": "157", "sortingField": "SORTING_DATE",
+        # 157 = Uhren & Schmuck; per borse, monete e carte si cerca in tutto il sito
+        cat = "157" if query.category in (None, Category.WATCH, Category.JEWELRY, Category.GOLD) else ""
+        params = {"keywords": q, "categoryId": cat, "sortingField": "SORTING_DATE",
                   "adType": "OFFER", "posterType": "", "pageNum": str(page), "action": "find", "radius": "0",
                   "minPrice": str(int(query.min_price)) if query.min_price else "",
                   "maxPrice": str(int(query.max_price)) if query.max_price else ""}
@@ -68,56 +72,57 @@ class Kleinanzeigen(Source):
 
 
 def parse_kleinanzeigen(page: str) -> list[Listing]:
+    """Layout 2026: <article data-adid data-href> con titolo in h3, prezzo in p.text-title3,
+    luogo e data in span, e un ld+json con titolo, descrizione e foto."""
     tree = HTMLParser(page)
     out = []
     stop_at = page.find("Alternative Anzeigen")
-    for art in tree.css("article.aditem"):
-        cls = (art.attributes.get("class") or "") + " " + (art.parent.attributes.get("class") or "" if art.parent else "")
-        if "topad" in cls.lower():
-            continue
+    for art in tree.css("article[data-adid]"):
         sid = art.attributes.get("data-adid")
         href = art.attributes.get("data-href") or ""
         if not sid:
             continue
         if stop_at > 0 and page.find(f'data-adid="{sid}"') > stop_at:
-            break
-        t = art.css_first("h2 a.ellipsis") or art.css_first("a.ellipsis")
-        title = t.text(strip=True) if t else ""
-        pnode = art.css_first("p.aditem-main--middle--price-shipping--price")
+            break  # sotto questa riga ci sono annunci di altre ricerche
+        ld = {}
+        if s := art.css_first('script[type="application/ld+json"]'):
+            try:
+                ld = json.loads(s.text())
+            except ValueError:
+                ld = {}
+        t = art.css_first("h3 a") or art.css_first("h2 a") or art.css_first("a.ellipsis")
+        title = (t.text(strip=True) if t else "") or ld.get("title") or ""
+        if not href and t:
+            href = t.attributes.get("href") or ""
+        pnode = art.css_first("p.text-title3") or art.css_first("p.aditem-main--middle--price-shipping--price")
         if pnode:
-            for old in pnode.css("s, del, [class*=strike]"):
+            for old in pnode.css("s, del, [class*=strike], [class*=line-through]"):
                 old.decompose()
         ptext = pnode.text(strip=True) if pnode else ""
-        price = parse_price(ptext)
+        price = parse_price(ptext.replace("VB", ""))
         if not title or not price:
             continue
-        ship = art.css_first(".aditem-main--middle--price-shipping--shipping")
-        ship_t = ship.text(strip=True) if ship else ""
-        desc_n = art.css_first(".aditem-main--middle--description")
-        desc = desc_n.text(strip=True) if desc_n else ""
-        if "Nur Abholung" in ship_t:
+        spans = [x.text(strip=True) for x in art.css("span")]
+        text = art.text(separator=" ", strip=True)
+        desc = ld.get("description") or ""
+        if not desc:
+            d = art.css_first("p.text-onSurfaceSubdued") or art.css_first(".aditem-main--middle--description")
+            desc = d.text(strip=True) if d else ""
+        pickup = "Nur Abholung" in text
+        if pickup:
             desc = "[SOLO RITIRO IN GERMANIA] " + desc
         if "VB" in ptext:
             desc = "[trattabile] " + desc
-        loc = art.css_first(".aditem-main--top--left")
-        img = art.css_first("[data-imgsrc]")
+        loc = next((x for x in spans if re.match(r"\d{5}\s+\S", x)), None)
+        img = ld.get("contentUrl")
+        if not img and (im := art.css_first("img[src]")):
+            img = im.attributes.get("src")
         out.append(Listing(
             source="kleinanzeigen", source_id=sid, url=KA + href if href.startswith("/") else href,
             title=title, description=desc, price=price, kind=SaleKind.OFFER, country="DE",
-            location=loc.text(strip=True) if loc else None, seller_type=SellerType.PRIVATE,
-            images=[img.attributes["data-imgsrc"]] if img else [],
-            raw={"pickup_only": "Nur Abholung" in ship_t, "negotiable": "VB" in ptext},
+            location=loc, seller_type=SellerType.PRIVATE, images=[img] if img else [],
+            raw={"pickup_only": pickup, "negotiable": "VB" in ptext, "shipping": "Versand möglich" in text},
         ))
-    if not out:  # layout Astro (2026): solo link agli annunci
-        for a in tree.css('a[href*="/s-anzeige/"]'):
-            href = a.attributes.get("href") or ""
-            m = re.search(r"/(\d{5,})-\d+-\d+", href)
-            text = a.text(separator=" ", strip=True)
-            pm = re.search(r"([\d.]+)\s*€", text)
-            if m and pm:
-                out.append(Listing(source="kleinanzeigen", source_id=m.group(1), url=KA + href if href.startswith("/") else href,
-                                   title=re.sub(r"[\d.]+\s*€.*$", "", text).strip()[:150], price=parse_price(pm.group(1)),
-                                   kind=SaleKind.OFFER, country="DE", seller_type=SellerType.PRIVATE))
     return out
 
 
@@ -133,7 +138,7 @@ class Marktplaats(Source):
 
     async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("en")
-        if query.category not in WATCHISH or not q:
+        if query.category not in FOREIGN_OK or not q:
             return []
         out = []
         errors = []
@@ -195,7 +200,7 @@ class Willhaben(Source):
 
     async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
-        if query.category not in WATCHISH or not q:
+        if query.category not in FOREIGN_OK or not q:
             return []
         params = {"keyword": q, "rows": "60", "page": str(page), "sort": "1"}
         if query.min_price:
@@ -246,7 +251,7 @@ class Ricardo(Source):
 
     async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
-        if query.category not in WATCHISH or not q:
+        if query.category not in FOREIGN_OK or not q:
             return []
         from urllib.parse import quote
 
@@ -455,20 +460,22 @@ class OrologiPassioni(Source):
 
     async def catalog(self) -> list[Listing]:
         known = self.cfg.get("_known") or (lambda key: False)
-        sections = self.cfg.get("section_ids")
-        if not sections:
-            home = await self.http.get_text(OP + "/")
-            sections = sorted(set(m.group(1) for m in re.finditer(
-                r'href="[^"]*\?f=(\d+)"[^>]*>[^<]*(?:Compro\s*(?:&amp;|&|e)\s*Vendo|Mercatino)', home, re.I)))
+        sections = self.cfg.get("section_ids") or OP_SECTIONS
         topics: dict[str, str] = {}
-        for f in sections[:6]:
-            page = await self.http.get_text(f"{OP}/", params={"f": f})
-            for m in re.finditer(r'href="[^"]*\?t=(\d+)"[^>]*>([^<]{6,160})</a>', page):
-                tid, title = m.group(1), htmlmod.unescape(m.group(2)).strip()
-                if re.match(r"\s*(vendo|vendesi|wts|cedo)", title, re.I) and tid not in topics:
-                    topics[tid] = title
+        errors = []
+        for f in sections:
+            try:
+                page = await self.http.get_text(f"{OP}/", params={"f": f})
+            except Exception as e:
+                log.info("forum sezione %s: %s", f, e)
+                errors.append(e)
+                continue
+            for tid, title in parse_forum_section(page).items():
+                topics.setdefault(tid, title)
+        if errors and len(errors) == len(sections):
+            raise errors[0]
         out = []
-        for tid, title in list(topics.items())[: self.cfg.get("max_topics", 60)]:
+        for tid, title in list(topics.items())[: self.cfg.get("max_topics", 120)]:
             if known(f"orologipassioni:{tid}"):
                 continue
             try:
@@ -481,11 +488,35 @@ class OrologiPassioni(Source):
         return out
 
 
+# sezioni "Compro & Vendo" del forum (11413706 = accessori e ricambi: escluso)
+OP_SECTIONS = ["190401", "640855", "552884", "7202007", "190402"]
+_NOT_FOR_SALE = re.compile(r"^\s*[\[(]?\s*(compro|cerco|wtb|scambio|permuta|c)\b[\])]?|regolamento|"
+                           r"\bvendut[oa]\b|\bsold\b|\bchiuso\b|feedback", re.I)
+
+
+def parse_forum_section(page: str) -> dict[str, str]:
+    """Discussioni di una sezione: link ?t=ID con il titolo (non i link 'ultimo messaggio' o di pagina)."""
+    tree = HTMLParser(page)
+    out: dict[str, str] = {}
+    for a in tree.css('a[href*="?t="]'):
+        href = a.attributes.get("href") or ""
+        m = re.search(r"[?&]t=(\d+)", href)
+        if not m or "help.forumfree" in href or re.search(r"[?&]st=|#lastpost", href):
+            continue
+        title = re.sub(r"\s+", " ", a.text(separator=" ", strip=True)).strip()
+        if len(title) < 6 or title.startswith("Re:") or _NOT_FOR_SALE.search(title):
+            continue
+        out.setdefault(m.group(1), title)
+    return out
+
+
 def parse_forum_topic(page: str, tid: str, title: str) -> Listing | None:
     tree = HTMLParser(page)
     post = tree.css_first(".post .color, .post, td.Post, .postcolor") or tree.body
     text = post.text(separator=" ", strip=True)[:3000] if post else ""
     if re.search(r"\bvendut[oa]\b|\bsold\b|\bchiuso\b", title, re.I):
+        return None
+    if re.search(r"^\s*[\[(]?\s*(compro|cerco|wtb)\b", title, re.I):
         return None
     m = (re.search(r"(?:prezzo|richiesta|chiedo|price)[^\d€]{0,25}(?:€\s*)?(\d[\d.,]{2,})", text, re.I)
          or re.search(r"(?:€\s*)(\d[\d.,]{2,})|(\d[\d.,]{2,})\s*(?:€|euro)", title + " " + text, re.I))
@@ -498,7 +529,8 @@ def parse_forum_topic(page: str, tid: str, title: str) -> Listing | None:
             (i.attributes.get("src") or "").startswith("https://") and "emoticon" not in (i.attributes.get("src") or "")]
     return Listing(
         source="orologipassioni", source_id=tid, url=f"{OP}/?t={tid}",
-        title=re.sub(r"^\s*(vendo|vendesi|wts|cedo)\s*[:\-]?\s*", "", title, flags=re.I), description=text,
+        title=re.sub(r"^\s*[\[(]?\s*(vendo|vendesi|wts|cedo|v)\s*[\])]?\s*[:\-]?\s*", "", title, flags=re.I),
+        description=text,
         price=price, kind=SaleKind.OFFER, country="IT", seller_type=SellerType.PRIVATE,
         category_hint=Category.WATCH, images=imgs[:3],
     )

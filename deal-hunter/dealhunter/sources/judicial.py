@@ -13,7 +13,7 @@ from datetime import datetime
 
 from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
-from ..models import Category, Listing, SaleKind, SellerType
+from ..models import Listing, SaleKind, SellerType
 from .base import Source, parse_price
 
 log = logging.getLogger(__name__)
@@ -41,6 +41,23 @@ def _dt(s: str | None) -> datetime | None:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def ag_search_body(tipologie: list[int]) -> dict:
+    """Corpo completo di Search/Map come lo manda il sito: con campi mancanti il server risponde 500.
+    tipoRicerca 2 = beni mobili; tipologia 11 = arte, oreficeria, antiquariato."""
+    body = dict.fromkeys((
+        "indirizzo", "latitudine", "longitudine", "latitudineNW", "longitudineNW", "latitudineSE", "longitudineSE",
+        "idEsperimentoVendita", "tipologia", "categoria", "descrizione", "comune", "provincia", "regione", "cap",
+        "ricercaCap", "prezzoDa", "prezzoA", "priceSteps", "tipologie", "idTribunale", "tribunale",
+        "numeroProcedura", "annoProcedura", "ruolo", "idTipologiaProcedura", "giudice", "professionista",
+        "idTipologiaVendita", "idModalitaVendita", "idPubblicazione", "dataVenditaDa", "dataVenditaA", "codiceAsta",
+        "hasFoto", "hasPlanimetrie", "hasVirtualTour", "hasVideo", "bandita", "telematica", "inScadenza",
+        "lottoUnico", "venditeAGI", "sezione", "tribunali", "tipologieProcedura", "tipologieVendita",
+        "modalitaVendita", "numeroPubblicazioni", "listaIdLotto", "idProcedura"))
+    body.update(tipoRicerca=2, noGeo=False, idTipologie=list(tipologie), idCategorie=[], priceMax=0,
+                storica=False, vetrina=False, searchOnMap=False, orderBy=6)
+    return body
 
 
 class Judicial(Source):
@@ -96,11 +113,7 @@ class Judicial(Source):
         return out
 
     async def _astegiudiziarie(self) -> list[Listing]:
-        search = {
-            "tipoRicerca": 2, "idTipologie": [11], "orderBy": 6, "storica": False,
-            "idCategorie": None, "prezzoDa": None, "prezzoA": None, "regione": None, "provincia": None,
-            "comune": None, "idTribunale": None, "dataVenditaDa": None, "dataVenditaA": None,
-        }
+        search = ag_search_body(tipologie=self.cfg.get("ag_tipologie", [11]))
         pins = await self.http.post_json(f"{AG_API}/Map", search, headers=AG_HEADERS)
         ids = [p["idLotto"] for p in pins if p.get("idLotto")][: self.cfg.get("ag_max_lots", 400)]
         out = []
@@ -119,39 +132,77 @@ class Judicial(Source):
                     title=desc[:140], description=desc,
                     price=round(float(price) * 0.75, 2),  # offerta minima = 75% del prezzo base
                     kind=SaleKind.AUCTION,
-                    ends_at=_dt(r.get("dataVendita") or r.get("dataInizioGara")),
+                    ends_at=_dt(r.get("dataUdienza") or r.get("dataVendita") or r.get("dataInizioGara")),
                     location=", ".join(x for x in (r.get("comune"), r.get("provincia")) if x) or None,
                     seller_type=SellerType.INSTITUTION, country="IT",
-                    images=[r["urlPhoto"]] if r.get("urlPhoto") else [],
+                    images=[r["urlPhoto"] if r["urlPhoto"].startswith("http") else
+                            "https://www.astegiudiziarie.it/" + r["urlPhoto"].lstrip("/")] if r.get("urlPhoto") else [],
                     raw={"tribunale": r.get("tribunale"), "prezzo_base": price,
                          "telematica": r.get("venditaTelematica")},
                 ))
         return out
 
     async def _fallcoaste(self) -> list[Listing]:
-        lot_urls: list[str] = []
+        lots: dict[str, Listing] = {}
         for cat in FALLCOASTE_CATS:
-            for page in range(1, self.cfg.get("fallcoaste_pages", 3) + 1):
+            pages = self.cfg.get("fallcoaste_pages", 20)
+            page = 1
+            while page <= pages:
                 html = await self.http.get_text(f"{FALLCOASTE}{cat}", params={"page": str(page)})
-                found = sorted(set(re.findall(r'href="(/vendita/[^"]+-\d+\.html)"', html)))
-                new = [u for u in found if u not in lot_urls]
+                found = parse_fallcoaste_list(html)
+                new = [l for l in found if l.source_id not in lots]
                 if not new:
                     break
-                lot_urls += new
-        known = self.cfg.get("_known") or (lambda key: False)
-        out = []
-        for path in lot_urls[: self.cfg.get("fallcoaste_max_lots", 150)]:
-            sid = "fc-" + re.search(r"-(\d+)\.html$", path).group(1)
-            if known(f"judicial:{sid}"):
-                continue  # scheda già letta: il prezzo base non cambia fino al prossimo esperimento
-            try:
-                html = await self.http.get_text(FALLCOASTE + path)
-            except Exception as e:
-                log.debug("fallcoaste %s: %s", path, e)
-                continue
-            if l := parse_fallcoaste_lot(html, FALLCOASTE + path, sid):
-                out.append(l)
-        return out
+                for l in new:
+                    lots[l.source_id] = l
+                if page == 1 and (m := re.search(r"total_elements:\s*(\d+),\s*per_page\s*:\s*(\d+)", html)):
+                    pages = min(pages, -(-int(m.group(1)) // max(int(m.group(2)), 1)))
+                page += 1
+        return list(lots.values())
+
+
+def parse_fallcoaste_list(html: str) -> list[Listing]:
+    """Schede lotto della pagina di categoria: titolo, prezzo base, termine, tribunale, foto.
+    I lotti possono stare su sottodomini (es. ivgroma.fallcoaste.it): l'URL è sempre assoluto."""
+    tree = HTMLParser(html)
+    out = []
+    for art in tree.css("article[data-auction-id]"):
+        sid = art.attributes.get("data-auction-id")
+        url = art.attributes.get("data-auction-url") or ""
+        a = art.css_first(".name_type a") or art.css_first('a[href*="/vendita/"]')
+        if not url and a:
+            url = a.attributes.get("href") or ""
+        if url.startswith("//"):
+            url = "https:" + url
+        elif url.startswith("/"):
+            url = FALLCOASTE + url
+        title = (a.attributes.get("title") if a else "") or ""
+        if not title and (h := art.css_first("h3")):
+            title = h.text(strip=True)
+        title = re.sub(r"\s+", " ", title).strip()
+        pnode = art.css_first(".price-block .price-element") or art.css_first(".price-element")
+        price = parse_price(pnode.text(strip=True)) if pnode else None
+        label = art.css_first(".price-block .label-desc")
+        if not sid or not url or not title or not price:
+            continue
+        end = None
+        if m := re.match(r"(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})", art.attributes.get("data-auction-data-termine") or ""):
+            d, mo, y, hh, mm = map(int, m.groups())
+            from zoneinfo import ZoneInfo
+
+            end = datetime(y, mo, d, hh, mm, tzinfo=ZoneInfo("Europe/Rome"))
+        ps = [p.text(separator=" ", strip=True) for p in art.css(".name_type p")]
+        court = next((re.sub(r"\s+", " ", p) for p in ps if re.search(r"tribunale|procedura", p, re.I)), None)
+        seller = art.css_first(".ribbon a")
+        img = art.css_first("img")
+        out.append(Listing(
+            source="judicial", source_id=f"fc-{sid}", url=url, title=title[:200], description=title,
+            price=price, kind=SaleKind.AUCTION, ends_at=end, seller_type=SellerType.INSTITUTION, country="IT",
+            images=[img.attributes["src"]] if img and (img.attributes.get("src") or "").startswith("http") else [],
+            raw={"tribunale": court, "venditore": seller.text(strip=True) if seller else None,
+                 "prezzo": label.text(strip=True) if label else None},
+        ))
+    return out
 
 
 def parse_fallcoaste_lot(html: str, url: str, sid: str) -> Listing | None:

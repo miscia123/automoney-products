@@ -67,6 +67,8 @@ def filter_comps(listing: Listing, attrs: Attributes, comps: list[Comparable],
 def melt_value(attrs: Attributes, market: Market) -> float | None:
     if attrs.category == Category.BULLION_COIN:
         return market.melt_value(attrs.fine_gold_g, attrs.fine_silver_g)
+    if attrs.fine_gold_g and attrs.category in (Category.GOLD, Category.JEWELRY):
+        return market.melt_value(fine_gold_g=attrs.fine_gold_g)  # oro fino dichiarato dal perito
     if attrs.karat and attrs.grams:
         fine = attrs.grams * KARAT_FINENESS[attrs.karat]
         if attrs.category == Category.WATCH:
@@ -114,7 +116,7 @@ def value(listing: Listing, attrs: Attributes, comps: list[Comparable], market: 
             fair_melt = melt
             if fair is None or fair < fair_melt or attrs.brand is None:
                 fair, low, high = fair_melt, melt * 0.95, max(melt, high or 0)
-                conf = max(conf, 0.85 if attrs.grams and attrs.karat else 0.5)
+                conf = max(conf, 0.85 if (attrs.grams and attrs.karat) or attrs.fine_gold_g else 0.5)
                 method = "valore dell'oro fino (peso x titolo x spot)"
         elif attrs.category == Category.BULLION_COIN:
             fair_melt = melt * (1 + BULLION_PREMIUM)

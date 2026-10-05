@@ -31,71 +31,57 @@ class Affide(Source):
     catalog_mode = True
 
     async def catalog(self) -> list[Listing]:
-        known = self.cfg.get("_known") or (lambda key: False)
         cal = await self.http.get_text(f"{AFFIDE}/c/prossime-aste/")
-        auctions = sorted(set(re.findall(r'href="(/(?:en/)?c/auction-\d+/\d+/?)"', cal)))
-        lot_paths: list[str] = []
-        for a in auctions[: self.cfg.get("max_auctions", 12)]:
+        auctions = list(dict.fromkeys(re.findall(r'href="(?:https://affide\.it)?(/c/auction-\d+/\d+/?)"', cal)))
+        out: list[Listing] = []
+        errors = []
+        for a in auctions[: self.cfg.get("max_auctions", 20)]:
             try:
                 html = await self.http.get_text(AFFIDE + a)
             except Exception as e:
-                log.debug("affide %s: %s", a, e)
+                log.info("affide %s: %s", a, e)
+                errors.append(e)
                 continue
-            for p in re.findall(r'href="(/(?:en/)?c/lot-\d+/\d+/?)"', html):
-                if p not in lot_paths:
-                    lot_paths.append(p)
-        out = []
-        for p in lot_paths[: self.cfg.get("max_lots", 400)]:
-            sid = re.search(r"/(\d+)/?$", p).group(1)
-            if known(f"affide:{sid}"):
-                continue
-            try:
-                html = await self.http.get_text(AFFIDE + p)
-            except Exception as e:
-                log.debug("affide lot %s: %s", p, e)
-                continue
-            if l := parse_affide_lot(html, AFFIDE + p, sid):
-                out.append(l)
+            out += parse_affide_auction(html)
+        if auctions and len(errors) == len(auctions[: self.cfg.get("max_auctions", 20)]):
+            raise errors[0]
         return out
 
 
-def parse_affide_lot(html: str, url: str, sid: str) -> Listing | None:
-    tree = HTMLParser(html)
-    h = tree.css_first("h1") or tree.css_first("title")
-    title = h.text(strip=True) if h else ""
-    text = tree.body.text(separator=" ", strip=True) if tree.body else ""
-    m = re.search(r"base\s+d.asta[^\d]{0,20}([\d.]+(?:,\d{2})?)", text + " " + title, re.I)
-    if not m:
-        return None
-    price = parse_price(m.group(1))
-    if not price:
-        return None
-    date = None
-    dm = re.search(r"(\d{2})/(\d{2})/(\d{4})(?:[^\d]{1,12}(\d{1,2})[:.](\d{2}))?", title + " " + text)
-    if dm:
-        d, mo, y, hh, mm = dm.groups()
-        try:
-            date = datetime(int(y), int(mo), int(d), int(hh or 10), int(mm or 0))
-        except ValueError:
-            pass
-    # la descrizione utile (peso, titolo dell'oro) è nel corpo del lotto
-    desc_node = tree.css_first(".lot-description, .description, article, main")
-    desc = desc_node.text(separator=" ", strip=True)[:2500] if desc_node else text[:2500]
-    realized = None
-    rm = re.search(r"prezzo\s+realizzato[^\d]{0,20}([\d.]+(?:,\d{2})?)", text, re.I)
-    if rm:
-        realized = parse_price(rm.group(1))
-    img = tree.css_first("meta[property='og:image']")
-    clean_title = re.sub(r"\s*[–-]\s*Base d.asta.*$", "", title, flags=re.I)
-    first_line = desc.split(".")[0][:120]
-    return Listing(
-        source="affide", source_id=sid, url=url,
-        title=clean_title if len(clean_title) > 25 else f"{clean_title} {first_line}".strip(),
-        description=desc, price=price, kind=SaleKind.AUCTION, ends_at=date,
-        seller_type=SellerType.INSTITUTION, country="IT",
-        images=[_abs(AFFIDE, img.attributes["content"])] if img and img.attributes.get("content") else [],
-        raw={"realized": realized},
-    )
+def parse_affide_auction(html: str) -> list[Listing]:
+    """La pagina di un'asta contiene tutti i lotti in JSON (const lots = {...}): una richiesta per asta."""
+    i = html.find("const lots = ")
+    if i < 0:
+        return []
+    try:
+        lots, _ = json.JSONDecoder().raw_decode(html[i + len("const lots = "):])
+    except ValueError:
+        return []
+    out = []
+    for lot in (lots.values() if isinstance(lots, dict) else lots):
+        if not isinstance(lot, dict) or lot.get("isClosed") or lot.get("verkauft"):
+            continue
+        price = lot.get("sortingPrice") or parse_price(lot.get("callPrice"))
+        if not price:
+            continue
+        title = (lot.get("titel") or "").strip()
+        desc = re.sub(r"<[^>]+>", " ", lot.get("beschreibung") or "").strip()
+        end = lot.get("ablaufzeit") or lot.get("datum")
+        imgs = lot.get("bilderPublicURL") or lot.get("images400x400") or []
+        sid = str(lot.get("uid"))
+        out.append(Listing(
+            source="affide", source_id=sid, url=_abs(AFFIDE, lot.get("detailURL") or f"/c/lot-229/{sid}/"),
+            # il titolo è generico ("Anello"): la descrizione ha oro, carati e grammi, serve all'estrazione
+            title=(f"{title} - {desc}" if title and desc.lower() != title.lower() else title or desc)[:200],
+            description=desc, price=float(price), kind=SaleKind.AUCTION,
+            ends_at=datetime.fromtimestamp(end, tz=timezone.utc) if end else None,
+            seller_type=SellerType.INSTITUTION, country="IT",
+            images=[_abs(AFFIDE, u) for u in imgs[:3]],
+            raw={"bids": lot.get("bidCounter"), "watchers": lot.get("watcherCount"),
+                 "auction": lot.get("auktion"), "group": lot.get("warengruppeElternTitel"),
+                 "lot_number": lot.get("publicNummer")},
+        ))
+    return out
 
 
 # =============================================================================
@@ -113,83 +99,123 @@ class Zoll(Source):
 
     async def catalog(self) -> list[Listing]:
         known = self.cfg.get("_known") or (lambda key: False)
-        links: list[str] = []
+        lots: dict[str, Listing] = {}
         for cat in self.cfg.get("categories", list(ZOLL_CATS)):
-            for page in range(1, self.cfg.get("pages", 3) + 1):
+            pages = self.cfg.get("pages", 15)
+            page = 1
+            while page <= pages:
                 html = await self.http.get_text(
                     f"{ZOLL}/auktion/auktionsuebersicht.php",
-                    params={"n1[]": cat, "n0": "search", "pagination": str(page)},
+                    params={"n1[]": cat, "n0": "search", "t": "t1", "s": "12", "pagination": str(page)},
                 )
-                found = re.findall(r'href="([^"]*/auktion/(?:produkt/[^"]+/\d+|auktion\.php\?id=\d+))"', html)
-                new = [f for f in dict.fromkeys(found) if f not in links]
+                found = parse_zoll_list(html)
+                new = [l for l in found if l.source_id not in lots]
                 if not new:
                     break
-                links += new
+                for l in new:
+                    lots[l.source_id] = l
+                if page == 1 and (m := re.search(r"([\d.]+)\s*Treffer", html)):
+                    pages = min(pages, -(-int(m.group(1).replace(".", "")) // max(len(found), 1)))
+                page += 1
         out = []
-        for href in links[: self.cfg.get("max_lots", 300)]:
-            sid = re.search(r"(\d+)$", href).group(1)
-            if known(f"zoll:{sid}"):
-                continue
-            try:
-                html = await self.http.get_text(_abs(ZOLL, href))
-            except Exception as e:
-                log.debug("zoll %s: %s", href, e)
-                continue
-            if l := parse_zoll_lot(html, _abs(ZOLL, href), sid):
-                out.append(l)
+        # la scheda ha la perizia (titolo dell'oro, peso, referenza, spedizione): solo per i lotti nuovi
+        for sid, l in list(lots.items())[: self.cfg.get("max_lots", 400)]:
+            if not known(f"zoll:{sid}"):
+                try:
+                    l = parse_zoll_lot(await self.http.get_text(l.url), l)
+                except Exception as e:
+                    log.debug("zoll %s: %s", sid, e)
+            out.append(l)
         return out
 
 
-def _label_value(tree: HTMLParser, label: str) -> str | None:
-    for node in tree.css("span, td, dt, li, div"):
-        t = node.text(strip=True)
-        if t.rstrip(":").lower() == label.lower():
-            nxt = node.next
-            while nxt is not None and (nxt.tag == "-text" and not nxt.text(strip=True)):
-                nxt = nxt.next
-            if nxt is not None:
-                return nxt.text(strip=True)
-    return None
-
-
-def parse_zoll_lot(html: str, url: str, sid: str) -> Listing | None:
+def parse_zoll_list(html: str) -> list[Listing]:
+    """Riquadri dell'elenco aste: titolo, prezzo attuale, offerte, luogo, tempo residuo."""
     tree = HTMLParser(html)
-    h = tree.css_first("h1")
-    title = h.text(strip=True) if h else ""
-    text = tree.body.text(separator=" ", strip=True) if tree.body else ""
-    gebot = _label_value(tree, "Aktuelles Gebot") or _label_value(tree, "Gebot") or ""
-    if not gebot:
-        m = re.search(r"(?:aktuelles\s+gebot|mindestgebot|startpreis)[^\d]{0,15}([\d.]+,\d{2})", text, re.I)
-        gebot = m.group(1) if m else ""
-    price = parse_price(gebot)
-    if not title or price is None:
+    out: list[Listing] = []
+    seen: set[str] = set()
+    for art in tree.css("ul.auktionen_kachel_list article, article.row"):
+        a = art.css_first(".kachel_auktion_link a") or art.css_first('a[href*="/auktion/produkt/"]')
+        if not a:
+            continue
+        href = a.attributes.get("href") or ""
+        m = re.search(r"/(\d+)/?$", href)
+        if not m or m.group(1) in seen:
+            continue
+        seen.add(m.group(1))
+        title = (a.attributes.get("title") or a.text(strip=True)).strip().rstrip(",")
+        pnode = art.css_first("p.text-right span") or art.css_first(".font-weight-bold")
+        price = parse_price((pnode.text(strip=True) if pnode else "").replace("EUR", ""))
+        if not title or price is None:
+            continue
+        loc = left = None
+        bids = None
+        for li in art.css("ul.fa-ul li"):
+            lab = li.css_first("[aria-label]")
+            kind = lab.attributes.get("aria-label") if lab else ""
+            t = li.text(strip=True).replace("\xa0", " ")
+            if kind == "Artikelstandort":
+                loc = t
+            elif kind == "Restlaufzeit":
+                left = t
+            elif kind == "Gebotsstatus" and (bm := re.search(r"(\d+)", t)):
+                bids = int(bm.group(1))
+        img = art.css_first("img")
+        out.append(Listing(
+            source="zoll", source_id=m.group(1), url=_abs(ZOLL, href), title=title, price=price,
+            kind=SaleKind.AUCTION, bids=bids, ends_at=_zoll_left(left), country="DE", location=loc,
+            seller_type=SellerType.INSTITUTION,
+            images=[_abs(ZOLL, img.attributes["src"])] if img and img.attributes.get("src") else [],
+        ))
+    return out
+
+
+def _zoll_left(text: str | None) -> datetime | None:
+    """'noch 2 Tage 3 Std. 28 Min.' -> fine asta in UTC."""
+    if not text:
         return None
-    bids = None
-    bm = re.search(r"(\d+)\s+Gebot", text)
-    if bm:
-        bids = int(bm.group(1))
-    end = None
-    em = re.search(r"(?:Auktionsende|Endzeit|endet am)[^\d]{0,15}(\d{2})\.(\d{2})\.(\d{4})[^\d]{1,10}(\d{2}):(\d{2})", text, re.I)
+    from datetime import timedelta
+
+    d = re.search(r"(\d+)\s*Tag", text)
+    h = re.search(r"(\d+)\s*Std", text)
+    m = re.search(r"(\d+)\s*Min", text)
+    if not (d or h or m):
+        return None
+    return datetime.now(timezone.utc) + timedelta(days=int(d.group(1)) if d else 0,
+                                                  hours=int(h.group(1)) if h else 0,
+                                                  minutes=int(m.group(1)) if m else 0)
+
+
+def parse_zoll_lot(html: str, base: Listing) -> Listing:
+    """Arricchisce un lotto dell'elenco con la scheda: descrizione periziata, fine asta, spedizione."""
+    tree = HTMLParser(html)
+    for x in tree.css("script, style, nav, header, footer"):
+        x.decompose()
+    text = tree.body.text(separator=" | ", strip=True) if tree.body else ""
+    flat = re.sub(r"[\s|]+", " ", text)
+    em = re.search(r"Auktionsende:\s*\w*\.?,?\s*(\d{2})\.(\d{2})\.(\d{4})\s*-\s*(\d{2}):(\d{2})", flat)
     if em:
+        from zoneinfo import ZoneInfo
+
         d, mo, y, hh, mm = map(int, em.groups())
-        end = datetime(y, mo, d, hh, mm)
-    ship = None
-    sm = re.search(r"Versand(?:kosten)?[^\d]{0,30}([\d.]+,\d{2})\s*(?:EUR|€)", text)
+        base.ends_at = datetime(y, mo, d, hh, mm, tzinfo=ZoneInfo("Europe/Berlin"))
+    sm = re.search(r"Versand:\s*Deutschland\s*\(([\d.]+,\d{2})\s*EUR\)", flat)
     if sm:
-        ship = parse_price(sm.group(1))
-    pickup_only = bool(re.search(r"nur\s+Abholung|Selbstabholung|kein\s+Versand", text, re.I))
-    desc_node = tree.css_first(".beschreibung, #beschreibung, .produktbeschreibung, .description")
-    desc = desc_node.text(separator=" ", strip=True) if desc_node else text[:2500]
+        base.shipping = parse_price(sm.group(1))
+    pickup_only = bool(re.search(r"Versand:\s*(?:Nein|nicht möglich)|nur\s+Abholung|kein\s+Versand", flat, re.I))
+    dm = re.search(r"Gegenstandsbeschreibung\s*(.*?)(?:Besichtigung, Abholung|Versandoptionen:|$)", flat, re.S)
+    desc = (dm.group(1) if dm else "").strip()[:3000]
     if pickup_only:
         desc = "[SOLO RITIRO IN GERMANIA] " + desc
+    if desc:
+        base.description = desc
+    seller = re.search(r"Anbieter:\s*(.*?)\s*(?:\(\d+ weitere|Ort:)", flat)
+    base.raw = {**(base.raw or {}), "pickup_only": pickup_only,
+                "seller": seller.group(1).strip() if seller else None}
     img = tree.css_first("meta[property='og:image']")
-    return Listing(
-        source="zoll", source_id=sid, url=url, title=title, description=desc, price=price,
-        kind=SaleKind.AUCTION, bids=bids, ends_at=end, shipping=ship, country="DE",
-        seller_type=SellerType.INSTITUTION,
-        images=[img.attributes["content"]] if img and img.attributes.get("content") else [],
-        raw={"pickup_only": pickup_only},
-    )
+    if img and img.attributes.get("content") and not base.images:
+        base.images = [img.attributes["content"]]
+    return base
 
 
 # =============================================================================
