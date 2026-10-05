@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS kv (
   v TEXT,
   updated_at REAL
 );
+CREATE TABLE IF NOT EXISTS sold_history (
+  key TEXT PRIMARY KEY,
+  source TEXT,
+  category TEXT,
+  title TEXT,
+  price_eur REAL,
+  sold_at REAL,
+  url TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_sold_cat ON sold_history(category, sold_at);
 CREATE TABLE IF NOT EXISTS source_health (
   source TEXT PRIMARY KEY,
   last_ok REAL,
@@ -56,6 +66,11 @@ class DB:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        for col in ("ends_at REAL", "harvested INTEGER", "category TEXT"):  # migrazione dei db vecchi
+            try:
+                self.conn.execute(f"ALTER TABLE listings ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
 
     # --- annunci -----------------------------------------------------------
     def needs_eval(self, listing: Listing, reeval_after_s: float) -> bool:
@@ -64,18 +79,19 @@ class DB:
             "SELECT price, last_eval FROM listings WHERE key=?", (listing.key,)
         ).fetchone()
         now = time.time()
+        ends = listing.ends_at.timestamp() if listing.ends_at else None
         if row is None:
             self.conn.execute(
-                "INSERT INTO listings(key, source, title, url, price, currency, first_seen, last_seen)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO listings(key, source, title, url, price, currency, first_seen, last_seen, ends_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 (listing.key, listing.source, listing.title, listing.url, listing.price,
-                 listing.currency, now, now),
+                 listing.currency, now, now, ends),
             )
             self.conn.commit()
             return True
         self.conn.execute(
-            "UPDATE listings SET last_seen=?, price=?, title=? WHERE key=?",
-            (now, listing.price, listing.title, listing.key),
+            "UPDATE listings SET last_seen=?, price=?, title=?, ends_at=COALESCE(?, ends_at) WHERE key=?",
+            (now, listing.price, listing.title, ends, listing.key),
         )
         self.conn.commit()
         if row["price"] != listing.price:
@@ -84,8 +100,9 @@ class DB:
 
     def save_eval(self, deal: Deal) -> None:
         self.conn.execute(
-            "UPDATE listings SET last_eval=?, last_level=?, deal_json=? WHERE key=?",
-            (time.time(), deal.level, json.dumps(deal_summary(deal), default=str), deal.listing.key),
+            "UPDATE listings SET last_eval=?, last_level=?, deal_json=?, category=? WHERE key=?",
+            (time.time(), deal.level, json.dumps(deal_summary(deal), default=str), deal.attrs.category.value,
+             deal.listing.key),
         )
         self.conn.commit()
 
@@ -118,6 +135,30 @@ class DB:
         deals = [json.loads(r["deal_json"]) for r in rows if r["deal_json"]]
         deals.sort(key=lambda d: d.get("score", 0), reverse=True)
         return deals[:limit]
+
+    # --- esiti delle aste chiuse (storico dei venduti costruito dal bot) ------------
+    def pending_results(self, source: str, limit: int = 30, grace_s: float = 900) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT key, title, url, category FROM listings WHERE source=? AND harvested IS NULL"
+            " AND category IS NOT NULL AND ends_at IS NOT NULL AND ends_at < ? AND ends_at > ?"
+            " ORDER BY ends_at DESC LIMIT ?",
+            (source, time.time() - grace_s, time.time() - 14 * 86400, limit),
+        ).fetchall()
+
+    def mark_harvested(self, key: str) -> None:
+        self.conn.execute("UPDATE listings SET harvested=1 WHERE key=?", (key,))
+        self.conn.commit()
+
+    def add_sold(self, key: str, source: str, category: str, title: str, price_eur: float, url: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO sold_history(key, source, category, title, price_eur, sold_at, url)"
+            " VALUES (?,?,?,?,?,?,?)", (key, source, category, title, price_eur, time.time(), url))
+        self.conn.commit()
+
+    def sold_history(self, category: str, days: int = 365, limit: int = 5000) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT title, price_eur, sold_at, url, source FROM sold_history WHERE category=? AND sold_at > ?"
+            " ORDER BY sold_at DESC LIMIT ?", (category, time.time() - days * 86400, limit)).fetchall()
 
     # --- cache comparabili -------------------------------------------------
     def get_comps(self, qkey: str, ttl_s: float) -> list[Comparable] | None:

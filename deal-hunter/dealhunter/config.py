@@ -77,6 +77,8 @@ DEFAULTS: dict[str, Any] = {
         "ebay_domains": ["ebay.it", "ebay.de"],
         "min_similarity": 0.3,
         "max_per_query": 40,
+        "chrono24": True,  # prezzi richiesti come riferimento (se la sorgente chrono24 è attiva)
+        "own_history": True,  # esiti delle aste chiuse riletti dal bot
     },
     "evaluation": {
         "reeval_hours": 12,
@@ -108,13 +110,13 @@ DEFAULTS: dict[str, Any] = {
         "subito": {"enabled": True, "interval": 10},
         "vinted": {"enabled": True, "interval": 15},
         "ebay": {"enabled": True, "interval": 15},
-        "catawiki": {"enabled": True, "interval": 30},
+        "catawiki": {"enabled": True, "interval": 30, "scan": True, "scan_categories": ["333"]},
         "affide": {"enabled": True, "interval": 180},
         "zoll": {"enabled": True, "interval": 60},
         "buyee": {"enabled": True, "interval": 60},
         "judicial": {"enabled": True, "interval": 360},
         "liveauctioneers": {"enabled": False, "interval": 240},
-        "chrono24": {"enabled": False, "interval": 120},
+        "chrono24": {"enabled": False, "interval": 60},  # richiede Playwright (Cloudflare)
         "wallapop": {"enabled": False, "interval": 20},
     },
     "http": {
@@ -127,6 +129,7 @@ DEFAULTS: dict[str, Any] = {
             "catawiki.com": {"concurrency": 2, "min_interval": 2.0},
             "zoll-auktion.de": {"concurrency": 2, "min_interval": 1.5},
             "buyee.jp": {"concurrency": 2, "min_interval": 2.0},
+            "chrono24.it": {"concurrency": 1, "min_interval": 3.5},
         },
     },
 }

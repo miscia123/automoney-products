@@ -215,10 +215,23 @@ class Catawiki(Source):
         if filters:
             params["filters"] = "&".join(filters)
         html = await self.http.get_text(f"{CATAWIKI}/it/s", params=params)
-        lots = parse_catawiki_search(html)
-        if not lots:
-            return []
-        ids = [str(l["id"]) for l in lots]
+        return await self._to_listings(parse_catawiki_search(html))
+
+    async def scan(self) -> list[Listing]:
+        """Tutti i lotti delle categorie scelte che chiudono entro 24 ore (oltre alle ricerche per modello)."""
+        out: list[Listing] = []
+        for cat in self.cfg.get("scan_categories", ["333"]):  # 333 = Orologi
+            for page in range(1, self.cfg.get("scan_pages", 4) + 1):
+                html = await self.http.get_text(
+                    f"{CATAWIKI}/it/c/{cat}", params={"sort": "bidding_end_asc", "page": str(page),
+                                                       "filters": "bidding_end_days[]=1"})
+                lots = parse_catawiki_search(html)
+                if not lots:
+                    break
+                out += await self._to_listings(lots, category_hint=Category.WATCH if cat == "333" else None)
+        return out
+
+    async def _bids(self, ids: list[str]) -> dict[str, dict]:
         bids: dict[str, dict] = {}
         for i in range(0, len(ids), 24):
             try:
@@ -230,6 +243,12 @@ class Catawiki(Source):
                     bids[str(b.get("id"))] = b
             except Exception as e:
                 log.info("catawiki bidding api: %s", e)
+        return bids
+
+    async def _to_listings(self, lots: list[dict], category_hint: Category | None = None) -> list[Listing]:
+        if not lots:
+            return []
+        bids = await self._bids([str(l["id"]) for l in lots])
         out = []
         for lot in lots:
             b = bids.get(str(lot["id"]), {})
@@ -240,19 +259,59 @@ class Catawiki(Source):
             price = amount if amount is not None else buy_now
             if price is None:
                 price = 1.0  # nessuna offerta ancora: il valore utile è l'offerta massima consigliata
-            end = b.get("bidding_end_time")
             out.append(Listing(
                 source="catawiki", source_id=str(lot["id"]),
                 url=lot.get("url") or f"{CATAWIKI}/it/l/{lot['id']}",
                 title=" ".join(x for x in (lot.get("title"), lot.get("subtitle")) if x),
-                price=float(price), kind=SaleKind.AUCTION,
-                ends_at=datetime.fromisoformat(end.replace("Z", "+00:00")) if isinstance(end, str) else None,
+                price=float(price), kind=SaleKind.AUCTION if buy_now is None or amount is not None else SaleKind.BUY_NOW,
+                ends_at=_ts(b.get("bidding_end_time")),
                 reserve_met=None if lot.get("reservePriceSet") else True,
                 shipping=0.0 if lot.get("hasFreeShipping") else None, country="EU",
                 images=[u for u in (lot.get("originalImageUrl") or lot.get("thumbImageUrl"),) if u],
-                raw={"reserve": lot.get("reservePriceSet")},
+                category_hint=category_hint, raw={"reserve": lot.get("reservePriceSet")},
             ))
         return out
+
+    async def result(self, listing_id: str) -> dict | None:
+        """Esito di un lotto chiuso: aggiudicato o no, e a quanto. Catawiki non ha un archivio dei
+        venduti, quindi il bot se lo costruisce rileggendo i lotti che aveva visto."""
+        html = await self.http.get_text(f"{CATAWIKI}/it/l/{listing_id}")
+        return parse_catawiki_result(html)
+
+
+def _ts(v) -> datetime | None:
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return datetime.fromtimestamp(v / 1000 if v > 1e11 else v, tz=timezone.utc)
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def parse_catawiki_result(html: str) -> dict | None:
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        return None
+    try:
+        pp = json.loads(m.group(1))["props"]["pageProps"]
+    except (ValueError, KeyError):
+        return None
+    bb = pp.get("biddingBlockResponse") or {}
+    det = pp.get("lotDetailsData") or {}
+    if not bb.get("closed") and not det.get("isClosed"):
+        return {"closed": False}
+    hammer = parse_price(str(bb.get("localizedCurrentBidAmount") or ""))
+    return {
+        "closed": True,
+        "sold": bool(bb.get("sold")),
+        "hammer_eur": hammer,
+        # prezzo pagato dal compratore: martello + 9% + 3 € di Buyer Protection
+        "paid_eur": round(hammer * 1.09 + 3, 2) if hammer else None,
+        "title": " ".join(x for x in (det.get("lotTitle"), det.get("lotSubtitle")) if x),
+        "estimate": [((det.get("expertsEstimate") or {}).get(k) or {}).get("EUR") for k in ("min", "max")],
+    }
 
 
 def parse_catawiki_search(html: str) -> list[dict]:

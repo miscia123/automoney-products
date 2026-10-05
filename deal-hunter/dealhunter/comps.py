@@ -22,6 +22,7 @@ from .http import Http
 from .market import Market
 from .models import Attributes, Category, Comparable, Listing
 from .sources.auctions import liveauctioneers_sold
+from .sources.chrono24 import chrono24_asks
 from .sources.ebay import ebay_sold
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class CompsEngine:
         self._locks: dict[str, asyncio.Lock] = {}
         self._cardmarket: dict[int, tuple[list[dict], dict[int, dict]]] = {}
         self.errors: dict[str, str] = {}
+        self.browser = None  # impostato dal motore se Chrono24 è attivo
 
     async def get(self, listing: Listing, attrs: Attributes) -> list[Comparable]:
         if attrs.category == Category.GOLD and not attrs.brand:
@@ -53,6 +55,10 @@ class CompsEngine:
             tasks.append(self._cached(f"{dom}:{q}", lambda d=dom: ebay_sold(self.http, q, d)))
         if attrs.category in LA_CATEGORIES and self.cfg.get("liveauctioneers", True):
             tasks.append(self._cached(f"la:{q}", lambda: liveauctioneers_sold(self.http, self.market, q)))
+        if attrs.category == Category.WATCH and self.browser is not None:
+            tasks.append(self._cached(f"c24:{q}", lambda: chrono24_asks(self.browser, self.market, q)))
+        if attrs.category == Category.WATCH and self.cfg.get("own_history", True):
+            tasks.append(self._own_history(listing, attrs))
         if attrs.category == Category.CARD and self.cfg.get("cardmarket", True):
             tasks.append(self._cardmarket_comps(listing, attrs))
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -77,6 +83,22 @@ class CompsEngine:
             comps = await fetch()
             self.db.put_comps(key, comps)
             return comps
+
+    # --- storico proprio (aste chiuse rilette dal bot) ---------------------------------
+    async def _own_history(self, listing: Listing, attrs: Attributes) -> list[Comparable]:
+        from datetime import datetime, timezone
+
+        ref = attrs.query_text or listing.title
+        out = []
+        for r in self.db.sold_history(attrs.category.value):
+            sim = max(similarity(ref, r["title"]), similarity(listing.title, r["title"]))
+            if attrs.reference and attrs.reference.lower() in r["title"].lower():
+                sim = max(sim, 0.9)
+            if sim >= 0.45:
+                out.append(Comparable(price_eur=r["price_eur"], title=r["title"], source=f"storico_{r['source']}",
+                                      kind="sold", url=r["url"], similarity=sim,
+                                      sold_at=datetime.fromtimestamp(r["sold_at"], tz=timezone.utc)))
+        return out[:40]
 
     # --- Cardmarket -------------------------------------------------------------
     async def _load_cardmarket(self, game: int):

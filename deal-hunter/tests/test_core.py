@@ -211,3 +211,58 @@ async def test_too_good_to_be_true_private_rolex(engine):
     engine.comps = FakeComps(sold)
     d = await engine.evaluate(L("Rolex Submariner 116610LN", 2500, desc="regalo, vendo urgente"))
     assert d.risk >= 75 and d.level in ("none", "watch")  # sconto del 75% da privato: probabile truffa
+
+
+# --- orologi: Chrono24, esiti Catawiki, storico proprio --------------------------------
+def test_chrono24_parser():
+    from dealhunter.sources.chrono24 import parse_chrono24
+
+    ls = parse_chrono24((FIX / "chrono24.html").read_text())
+    assert [l.source_id for l in ls] == ["38123456", "38222222"]  # "prezzo su richiesta" scartato
+    sub, gmt = ls
+    assert sub.price == 8950 and sub.currency == "EUR" and sub.country == "IT" and sub.shipping == 45
+    assert sub.title == "Rolex Submariner Date 116610LN Acciaio 2016 full set"
+    assert sub.seller_type.value == "private" and sub.images[0].endswith("38123456-480.jpg")
+    assert gmt.currency == "USD" and gmt.country == "US" and gmt.url.startswith("https://www.chrono24.it/")
+
+
+def test_chrono24_us_listing_pays_import(market):
+    from dealhunter.sources.chrono24 import parse_chrono24
+
+    gmt = parse_chrono24((FIX / "chrono24.html").read_text())[1]
+    c = landed_cost(gmt, extract(gmt), market, SOURCE_PROFILES["chrono24"])
+    assert c.import_vat > 0 and c.import_duty > 0
+
+
+def test_catawiki_closed_lot_result():
+    from dealhunter.sources.auctions import parse_catawiki_result
+
+    r = parse_catawiki_result((FIX / "catawiki_lot_closed.html").read_text())
+    assert r["closed"] and r["sold"] and r["hammer_eur"] == 3150
+    assert r["paid_eur"] == pytest.approx(3150 * 1.09 + 3) and r["estimate"] == [3600, 4200]
+
+
+async def test_harvest_builds_own_sold_history(engine):
+    """Il bot rilegge le aste chiuse e il prezzo pagato diventa un comparabile per i lotti futuri."""
+    from dealhunter.comps import CompsEngine
+    from dealhunter.models import Attributes
+
+    past = datetime.now(timezone.utc) - timedelta(hours=2)
+    l = Listing(source="catawiki", source_id="91000001", url="https://www.catawiki.com/it/l/91000001",
+                title="Omega Speedmaster Professional Moonwatch 3570.50", price=2500, kind=SaleKind.AUCTION,
+                ends_at=past)
+    engine.db.needs_eval(l, 0)
+    engine.db.conn.execute("UPDATE listings SET category='watch' WHERE key=?", (l.key,))
+
+    class FakeCatawiki:
+        async def result(self, sid):
+            from dealhunter.sources.auctions import parse_catawiki_result
+            return parse_catawiki_result((FIX / "catawiki_lot_closed.html").read_text())
+
+    engine.sources = {"catawiki": FakeCatawiki()}
+    assert await engine.harvest_results() == 1
+    assert await engine.harvest_results() == 0  # già raccolto
+    ce = CompsEngine(http=None, db=engine.db, market=engine.market, cfg={})
+    nl = L("Omega Speedmaster Professional 3570.50 Moonwatch", source="subito")
+    comps = await ce._own_history(nl, extract(nl))
+    assert len(comps) == 1 and comps[0].price_eur == pytest.approx(3436.5) and comps[0].source == "storico_catawiki"

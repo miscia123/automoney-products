@@ -61,13 +61,15 @@ class Engine:
                 continue
             cls = REGISTRY[name]
             http = self.http
-            if cls.needs_browser:
+            if cls.needs_browser or scfg.get("use_browser"):
                 http = await self._get_browser()
                 if http is None:
                     log.warning("%s richiede il browser (Playwright) e verrà saltata", name)
                     continue
             scfg = {**scfg, "_known": self._known}
             self.sources[name] = cls(http, scfg, self.cfg["secrets"])
+        if self.cfg["comps"].get("chrono24") and self.cfg["sources"].get("chrono24", {}).get("enabled"):
+            self.comps.browser = await self._get_browser()
         llm_cfg = self.cfg["llm"]
         if llm_cfg.get("enabled") is True or (llm_cfg.get("enabled") == "auto" and self.cfg["secrets"]["anthropic"]):
             try:
@@ -85,7 +87,8 @@ class Engine:
             try:
                 from .browser import BrowserHttp
                 self.browser = await self._stack.enter_async_context(
-                    BrowserHttp(warmup={"buyee.jp": "https://buyee.jp/"}, proxy=self.cfg.get("proxy")))
+                    BrowserHttp(warmup={"buyee.jp": "https://buyee.jp/", "www.chrono24.it": "https://www.chrono24.it/"},
+                            proxy=self.cfg.get("proxy")))
             except Exception as e:
                 log.warning("browser non disponibile: %s", e)
                 self.browser = False
@@ -143,6 +146,11 @@ class Engine:
                     listings.append(l)
             if queries and len(errors) == len(queries):
                 raise errors[0]
+            if hasattr(src, "scan") and self.cfg["sources"][name].get("scan", True):
+                try:
+                    listings += await src.scan()
+                except Exception as e:
+                    log.info("%s scansione categorie: %s", name, e)
         uniq = {l.key: l for l in listings}
         return list(uniq.values())
 
@@ -290,6 +298,30 @@ class Engine:
         self.db.kv_set(f"lastrun:{name}", time.time())
         return deals
 
+    async def harvest_results(self, per_source: int = 30) -> int:
+        """Rilegge le aste chiuse e salva i prezzi realmente pagati: diventano comparabili."""
+        n = 0
+        for name, src in self.sources.items():
+            if not hasattr(src, "result"):
+                continue
+            for row in self.db.pending_results(name, per_source):
+                sid = row["key"].split(":", 1)[1]
+                try:
+                    res = await src.result(sid)
+                except Exception as e:
+                    log.debug("esito %s: %s", row["key"], e)
+                    continue
+                if not res or not res.get("closed"):
+                    continue
+                if res.get("sold") and res.get("paid_eur"):
+                    self.db.add_sold(row["key"], name, row["category"], res.get("title") or row["title"],
+                                     res["paid_eur"], row["url"])
+                    n += 1
+                self.db.mark_harvested(row["key"])
+        if n:
+            log.info("storico venduti: +%d esiti d'asta", n)
+        return n
+
     def due_sources(self) -> list[str]:
         now = time.time()
         out = []
@@ -305,6 +337,7 @@ class Engine:
         names = only or (list(self.sources) if force else self.due_sources())
         names = [n for n in names if n in self.sources]
         results = await asyncio.gather(*(self.run_source(n) for n in names))
+        await self.harvest_results()
         await self.maybe_digest()
         return [d for r in results for d in r]
 

@@ -37,6 +37,8 @@ comps:
   ebay_domains: [ebay.it, ebay.de]
   liveauctioneers: true
   cardmarket: true
+  chrono24: true          # prezzi richiesti su Chrono24 come riferimento per gli orologi
+  own_history: true       # il bot rilegge le aste Catawiki chiuse e ne salva il prezzo pagato
 
 # Intervalli in minuti. I marketplace di privati vanno controllati spesso: l'affare
 # vero dura poche ore. Le aste e i cataloghi cambiano più lentamente.
@@ -45,9 +47,11 @@ sources:
   vinted:   {enabled: true,  interval: 15}
   ebay:     {enabled: true,  interval: 15}
   wallapop: {enabled: true,  interval: 20}
-  catawiki: {enabled: true,  interval: 30}
+  catawiki: {enabled: true,  interval: 30, scan: true, scan_categories: ["333"]}   # 333 = Orologi: tutti i lotti in chiusura
+  # use_browser: true su qualsiasi sorgente la fa passare dal browser vero (es. se Catawiki risponde 403)
   zoll:     {enabled: true,  interval: 60}
   affide:   {enabled: true,  interval: 180}
   judicial: {enabled: true,  interval: 360}
+  chrono24: {enabled: true,  interval: 60}            # serve Playwright (Cloudflare); senza viene saltato
   buyee:    {enabled: false, interval: 60}            # serve Playwright (vedi README)
   liveauctioneers: {enabled: false, interval: 240}    # commissioni USA alte: utile soprattutto come venduti
