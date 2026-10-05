@@ -1,0 +1,8 @@
+{"items": [
+ {"id": 5550001, "title": "Cartier Tank Solo quarzo", "url": "/items/5550001-cartier-tank-solo",
+  "price": {"amount": "1100.0", "currency_code": "EUR"}, "service_fee": {"amount": "55.7", "currency_code": "EUR"},
+  "total_item_price": {"amount": "1155.7", "currency_code": "EUR"}, "brand_title": "Cartier", "status": "Ottime",
+  "photo": {"url": "https://images1.vinted.net/t/01.jpg", "full_size_url": "https://images1.vinted.net/f/01.jpg",
+            "high_resolution": {"timestamp": 1791190000}},
+  "user": {"id": 9, "login": "anna_m", "feedback_reputation": 0.98}, "favourite_count": 3}
+], "pagination": {"current_page": 1, "total_pages": 1, "total_entries": 1}}

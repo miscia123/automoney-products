@@ -1,0 +1,53 @@
+# Copia in config/config.yaml e modifica. Tutto ciò che non scrivi usa i valori
+# predefiniti di dealhunter/config.py. I segreti vanno nelle variabili d'ambiente
+# (vedi .env.example), mai qui.
+
+db_path: data/dealhunter.sqlite
+watchlist: config/watchlist.yaml
+log_level: INFO
+
+# Soglie degli alert. Guadagno e ROI sono già al netto di commissioni d'asta, IVA,
+# spedizione, dazi, riparazioni e commissioni di rivendita.
+levels:
+  hot:   {min_profit: 400, min_roi: 0.30, max_risk: 45, min_confidence: 0.55}
+  good:  {min_profit: 150, min_roi: 0.20, max_risk: 60, min_confidence: 0.40}
+  watch: {min_profit: 60,  min_roi: 0.12, max_risk: 75, min_confidence: 0.25}
+
+evaluation:
+  target_margin: 0.20                # margine voluto per l'"offerta massima consigliata"
+  auction_alert_window_hours: 24     # avvisa sulle aste solo nelle ultime 24 ore
+  reeval_hours: 12
+  concurrency: 8
+
+alerts:
+  telegram: {enabled: true, levels: [hot, good]}
+  email: {enabled: false, levels: [hot]}
+  digest_hour: 20                    # riepilogo giornaliero alle 20
+  quiet_hours: [0, 7]                # di notte solo i "GRANDE AFFARE"
+
+llm:
+  enabled: auto                      # attivo se c'è ANTHROPIC_API_KEY
+  model: claude-opus-5-5
+  effort: medium
+  min_level: good                    # il perito AI guarda solo i candidati buoni
+  max_calls_per_run: 25
+
+comps:
+  ttl_hours: 24
+  ebay_domains: [ebay.it, ebay.de]
+  liveauctioneers: true
+  cardmarket: true
+
+# Intervalli in minuti. I marketplace di privati vanno controllati spesso: l'affare
+# vero dura poche ore. Le aste e i cataloghi cambiano più lentamente.
+sources:
+  subito:   {enabled: true,  interval: 10}
+  vinted:   {enabled: true,  interval: 15}
+  ebay:     {enabled: true,  interval: 15}
+  wallapop: {enabled: true,  interval: 20}
+  catawiki: {enabled: true,  interval: 30}
+  zoll:     {enabled: true,  interval: 60}
+  affide:   {enabled: true,  interval: 180}
+  judicial: {enabled: true,  interval: 360}
+  buyee:    {enabled: false, interval: 60}            # serve Playwright (vedi README)
+  liveauctioneers: {enabled: false, interval: 240}    # commissioni USA alte: utile soprattutto come venduti

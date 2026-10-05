@@ -1,0 +1,66 @@
+# Cosa cercare. Ogni voce gira su tutte le sorgenti "a ricerca" (Subito, Vinted, eBay,
+# Catawiki, Wallapop, Buyee, LiveAuctioneers) salvo "sources" / "exclude_sources".
+# Le sorgenti "a catalogo" (Affide, Zoll-Auktion, vendite giudiziarie) scaricano tutto
+# il catalogo dei preziosi e non usano questa lista.
+#
+# Campi: q (testo), category (watch, gold, jewelry, bullion_coin, coin, card, bag, art,
+# wine, collectible), min_price / max_price in EUR (scarta il rumore: cinturini,
+# scatole vuote, repliche a 50 €), ja/de/en (traduzioni per Buyee e siti esteri).
+
+queries:
+  # --- Orologi: i modelli più liquidi, si rivendono in giorni ----------------------
+  - {q: "rolex submariner", category: watch, min_price: 3500, ja: "ロレックス サブマリーナ", en: "rolex submariner"}
+  - {q: "rolex datejust", category: watch, min_price: 2000, ja: "ロレックス デイトジャスト", en: "rolex datejust"}
+  - {q: "rolex daytona", category: watch, min_price: 8000, ja: "ロレックス デイトナ", en: "rolex daytona"}
+  - {q: "rolex gmt master", category: watch, min_price: 6000, ja: "ロレックス GMTマスター", en: "rolex gmt master"}
+  - {q: "rolex explorer", category: watch, min_price: 3500, ja: "ロレックス エクスプローラー", en: "rolex explorer"}
+  - {q: "rolex oyster perpetual", category: watch, min_price: 2500, ja: "ロレックス オイスターパーペチュアル"}
+  - {q: "rolex day-date", category: watch, min_price: 12000, ja: "ロレックス デイデイト"}
+  - {q: "rolex oro", category: watch, min_price: 2500, exclude_sources: [buyee]}
+  - {q: "omega speedmaster", category: watch, min_price: 1800, ja: "オメガ スピードマスター", en: "omega speedmaster"}
+  - {q: "omega seamaster", category: watch, min_price: 1200, ja: "オメガ シーマスター"}
+  - {q: "omega constellation oro", category: watch, min_price: 800}
+  - {q: "patek philippe", category: watch, min_price: 8000, ja: "パテックフィリップ", en: "patek philippe"}
+  - {q: "audemars piguet royal oak", category: watch, min_price: 15000, ja: "オーデマピゲ ロイヤルオーク"}
+  - {q: "cartier santos", category: watch, min_price: 2000, ja: "カルティエ サントス"}
+  - {q: "cartier tank", category: watch, min_price: 1200, ja: "カルティエ タンク"}
+  - {q: "tudor black bay", category: watch, min_price: 1800, ja: "チューダー ブラックベイ"}
+  - {q: "jaeger lecoultre reverso", category: watch, min_price: 2500, ja: "ジャガールクルト レベルソ"}
+  - {q: "panerai luminor", category: watch, min_price: 2500}
+  - {q: "iwc portugieser", category: watch, min_price: 3000}
+  - {q: "breitling navitimer", category: watch, min_price: 1500}
+  - {q: "grand seiko", category: watch, min_price: 1500, ja: "グランドセイコー"}
+  - {q: "heuer carrera vintage", category: watch, min_price: 1500}
+  - {q: "universal geneve compax", category: watch, min_price: 1500}
+  - {q: "orologio oro 18kt", category: watch, min_price: 400, exclude_sources: [buyee, liveauctioneers]}
+
+  # --- Oro a peso e monete da investimento: valore verificabile al grammo -----------
+  - {q: "sterlina oro", category: bullion_coin, min_price: 300, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "marengo oro", category: bullion_coin, min_price: 250, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "krugerrand", category: bullion_coin, min_price: 1500}
+  - {q: "lingotto oro", category: bullion_coin, min_price: 300, exclude_sources: [liveauctioneers]}
+  - {q: "20 dollari oro", category: bullion_coin, min_price: 1500}
+  - {q: "bracciale oro 18kt", category: gold, min_price: 300, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "collana oro 750", category: gold, min_price: 300, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "catena oro grammi", category: gold, min_price: 300, exclude_sources: [buyee, liveauctioneers]}
+  - {q: "oro usato grammi", category: gold, min_price: 200, sources: [subito, wallapop]}
+  - {q: "500 lire argento", category: bullion_coin, min_price: 10, max_price: 400, sources: [subito, ebay]}
+
+  # --- Gioielli firmati ------------------------------------------------------------
+  - {q: "cartier love", category: jewelry, min_price: 1500, ja: "カルティエ ラブブレス"}
+  - {q: "van cleef alhambra", category: jewelry, min_price: 1500, ja: "ヴァンクリーフ アルハンブラ"}
+  - {q: "bulgari serpenti", category: jewelry, min_price: 1200}
+  - {q: "pomellato nudo", category: jewelry, min_price: 600}
+  - {q: "tiffany oro", category: jewelry, min_price: 500}
+
+  # --- Borse di lusso ----------------------------------------------------------------
+  - {q: "hermes birkin", category: bag, min_price: 5000, ja: "エルメス バーキン"}
+  - {q: "hermes kelly", category: bag, min_price: 4000, ja: "エルメス ケリー"}
+  - {q: "chanel timeless", category: bag, min_price: 2000, ja: "シャネル マトラッセ"}
+  - {q: "chanel 2.55", category: bag, min_price: 2000}
+
+  # --- Carte collezionabili ----------------------------------------------------------
+  - {q: "charizard psa", category: card, min_price: 150, ja: "リザードン PSA"}
+  - {q: "pokemon psa 10", category: card, min_price: 100}
+  - {q: "pokemon booster box sigillato", category: card, min_price: 120}
+  - {q: "one piece card game psa 10", category: card, min_price: 100}

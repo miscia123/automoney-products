@@ -1,0 +1,41 @@
+# Giro di DealHunter su GitHub Actions: alternativa senza hardware, ma con limiti.
+# - Gli IP di GitHub sono di datacenter: Vinted e a volte eBay/Catawiki li bloccano.
+# - Su repo privati ogni giro consuma minuti (2.000 gratis al mese).
+# - Lo stato (annunci già visti) passa da un giro all'altro tramite la cache.
+# Per attivarlo: aggiungi i secrets TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (e se vuoi
+# ANTHROPIC_API_KEY, DEALHUNTER_PROXY), poi togli il commento a "schedule".
+name: dealhunter
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "17 * * * *"
+concurrency: dealhunter
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: deal-hunter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install .
+      - uses: actions/cache/restore@v4
+        with:
+          path: deal-hunter/data
+          key: dealhunter-db-${{ github.run_id }}
+          restore-keys: dealhunter-db-
+      - run: dealhunter -c config/config.example.yaml run
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEALHUNTER_PROXY: ${{ secrets.DEALHUNTER_PROXY }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: deal-hunter/data
+          key: dealhunter-db-${{ github.run_id }}
