@@ -33,6 +33,14 @@ CARDMARKET_GAMES = {"pokemon": 6, "magic": 1, "yugioh": 3, "onepiece": 18, "lorc
 LA_CATEGORIES = {Category.WATCH, Category.JEWELRY, Category.COIN, Category.ART, Category.BAG}
 
 
+class CompsResult(list):
+    """Lista di comparabili che ricorda anche quali fonti di prezzo hanno fallito."""
+
+    def __init__(self, items=(), errors=None):
+        super().__init__(items)
+        self.errors: list[str] = errors or []
+
+
 class CompsEngine:
     def __init__(self, http: Http, db: DB, market: Market, cfg: dict):
         self.http = http
@@ -47,10 +55,10 @@ class CompsEngine:
 
     async def get(self, listing: Listing, attrs: Attributes) -> list[Comparable]:
         if attrs.category == Category.GOLD and not attrs.brand:
-            return []  # oro generico: decide il peso, i comparabili sarebbero rumore
+            return CompsResult()  # oro generico: decide il peso, i comparabili sarebbero rumore
         q = attrs.query_text.strip()
         if len(q.split()) < 2 and attrs.category not in (Category.BULLION_COIN,):
-            return []
+            return CompsResult()
         tasks = []
         for dom in self.cfg.get("ebay_domains", ["ebay.it"]):
             tasks.append(self._cached(f"{dom}:{q}", lambda d=dom: ebay_sold(self.http, q, d)))
@@ -67,13 +75,15 @@ class CompsEngine:
             tasks.append(self._cardmarket_comps(listing, attrs))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         comps: list[Comparable] = []
+        errors: list[str] = []
         for r in results:
             if isinstance(r, Exception):
                 log.info("comparabili non disponibili per %r: %s", q, r)
                 self.errors[type(r).__name__] = str(r)[:200]
+                errors.append(f"{type(r).__name__}: {str(r)[:120]}")
                 continue
             comps += r
-        return comps[: self.cfg.get("max_per_query", 40) * 3]
+        return CompsResult(comps[: self.cfg.get("max_per_query", 40) * 3], errors)
 
     async def _cached(self, key: str, fetch) -> list[Comparable]:
         hit = self.db.get_comps(key, self.ttl)

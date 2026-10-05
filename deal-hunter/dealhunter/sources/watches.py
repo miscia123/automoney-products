@@ -51,13 +51,15 @@ class Kleinanzeigen(Source):
     name = "kleinanzeigen"
     profile = "kleinanzeigen"
     lang = "de"
+    paged = True
+    page_size = 25
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
         if query.category not in WATCHISH or not q:
             return []
         params = {"keywords": q, "categoryId": "157", "sortingField": "SORTING_DATE",
-                  "adType": "OFFER", "posterType": "", "pageNum": "1", "action": "find", "radius": "0",
+                  "adType": "OFFER", "posterType": "", "pageNum": str(page), "action": "find", "radius": "0",
                   "minPrice": str(int(query.min_price)) if query.min_price else "",
                   "maxPrice": str(int(query.max_price)) if query.max_price else ""}
         page = await self.http.get_text(f"{KA}/s-suchanfrage.html", params=params,
@@ -126,8 +128,10 @@ class Marktplaats(Source):
     name = "marktplaats"
     profile = "marktplaats"
     lang = "en"
+    paged = True
+    page_size = 100
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("en")
         if query.category not in WATCHISH or not q:
             return []
@@ -135,7 +139,7 @@ class Marktplaats(Source):
         errors = []
         domains = self.cfg.get("domains", ["https://www.marktplaats.nl", "https://www.2dehands.be"])
         for base in domains:
-            params = {"query": q, "limit": "100", "offset": "0", "sortBy": "SORT_INDEX",
+            params = {"query": q, "limit": "100", "offset": str((page - 1) * 100), "sortBy": "SORT_INDEX",
                       "sortOrder": "DECREASING", "searchInTitleAndDescription": "true", "viewOptions": "list-view"}
             if query.category == Category.WATCH and "marktplaats" in base:
                 params["l1CategoryId"] = "1826"
@@ -186,12 +190,14 @@ class Willhaben(Source):
     name = "willhaben"
     profile = "willhaben"
     lang = "de"
+    paged = True
+    page_size = 60
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
         if query.category not in WATCHISH or not q:
             return []
-        params = {"keyword": q, "rows": "60", "page": "1", "sort": "1"}
+        params = {"keyword": q, "rows": "60", "page": str(page), "sort": "1"}
         if query.min_price:
             params["PRICE_FROM"] = str(int(query.min_price))
         if query.max_price:
@@ -238,7 +244,7 @@ class Ricardo(Source):
     profile = "ricardo"
     lang = "de"
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("de")
         if query.category not in WATCHISH or not q:
             return []
@@ -395,7 +401,7 @@ class WatchCollecting(Source):
     lang = "en"
     _cache: dict = {}
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("en")
         if query.category not in (None, Category.WATCH) or not q:
             return []

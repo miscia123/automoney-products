@@ -179,7 +179,23 @@ def deep_merge(base: dict, extra: dict) -> dict:
     return out
 
 
+def load_dotenv(path: str | os.PathLike = ".env") -> None:
+    """Legge KEY=VALORE da .env (token Telegram, chiavi) senza sovrascrivere l'ambiente."""
+    p = Path(path)
+    if not p.exists():
+        return
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k, v = k.strip(), v.strip().strip('"').strip("'")
+        if k and v and k not in os.environ:
+            os.environ[k] = v
+
+
 def load_config(path: str | os.PathLike | None = None) -> dict[str, Any]:
+    load_dotenv()
     cfg = copy.deepcopy(DEFAULTS)
     p = Path(path or os.environ.get("DEALHUNTER_CONFIG", "config/config.yaml"))
     if p.exists():

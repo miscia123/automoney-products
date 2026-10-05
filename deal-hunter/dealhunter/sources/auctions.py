@@ -205,7 +205,7 @@ class Catawiki(Source):
     name = "catawiki"
     profile = "catawiki"
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         filters = ["bidding_end_days[]=1"] if self.cfg.get("ending_today_only") else []
         if query.category in CATAWIKI_CATS:
             filters.append(f"l2_categories[]={CATAWIKI_CATS[query.category]}")
@@ -348,7 +348,7 @@ class LiveAuctioneers(Source):
     profile = "liveauctioneers"
     lang = "en"
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         q = query.foreign_text("en")
         if not q:
             return []
@@ -403,7 +403,7 @@ class Buyee(Source):
     lang = "ja"
     needs_browser = True
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         if not query.foreign_text("ja"):
             return []
         q = quote(query.foreign_text("ja"), safe="")

@@ -20,6 +20,8 @@ API = "https://api.vinted.it/svc-catalogue/items"
 class Vinted(Source):
     name = "vinted"
     profile = "vinted"
+    paged = True
+    page_size = 48
 
     _token: str | None = None
     _anon: str | None = None
@@ -50,14 +52,14 @@ class Vinted(Source):
             h["X-Anon-Id"] = self._anon
         return h
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         if not self._token or time.time() - self._token_at > 20 * 3600:
             await self._bootstrap()
         params = {
             "search_text": query.text("it"),
             "order": "newest_first",
             "per_page": str(self.cfg.get("page_size", 48)),
-            "page": "1",
+            "page": str(page),
             "currency": "EUR",
         }
         if query.min_price:

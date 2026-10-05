@@ -28,13 +28,16 @@ CATEGORY_IDS = {
 class Subito(Source):
     name = "subito"
     profile = "subito"
+    paged = True
+    page_size = 50
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
+        lim = int(self.cfg.get("page_size", self.page_size))
         params = {
             "q": query.text("it"),
             "t": "s",
-            "lim": str(self.cfg.get("page_size", 50)),
-            "start": "0",
+            "lim": str(lim),
+            "start": str((page - 1) * lim),
             "sort": "datedesc",
         }
         if query.category in CATEGORY_IDS:

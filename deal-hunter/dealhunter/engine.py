@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 
@@ -42,6 +43,12 @@ class Engine:
         self.llm_calls = 0
         self._stack = AsyncExitStack()
         self.reviewer = None
+        # stato dal vivo per la dashboard
+        self.events: deque[dict] = deque(maxlen=400)
+        self.progress: dict[str, dict] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._handler = _EventHandler(self.events)
+        logging.getLogger("dealhunter").addHandler(self._handler)
 
     # --- ciclo di vita -------------------------------------------------------------
     async def __aenter__(self):
@@ -81,9 +88,12 @@ class Engine:
         return self
 
     async def __aexit__(self, *exc):
+        logging.getLogger("dealhunter").removeHandler(self._handler)
         await self._stack.aclose()
 
     async def _get_browser(self):
+        if self.cfg.get("_no_browser"):
+            return None
         if self.browser is None:
             try:
                 from .browser import BrowserHttp
@@ -120,20 +130,50 @@ class Engine:
             ))
         return out
 
-    async def collect(self, name: str) -> list[Listing]:
+    async def _search_deep(self, src: Source, q: Query, stats: dict) -> list[Listing]:
+        """Pagina 1 sempre; le successive solo se la pagina era piena e TUTTA di annunci mai visti:
+        vuol dire che dall'ultimo giro ne sono arrivati più di una pagina e senza continuare li perderemmo."""
+        max_pages = self.cfg["evaluation"].get("max_pages", 5) if src.paged else 1
+        if not self.db.has_any(src.name):
+            max_pages = 1  # primo giro in assoluto: si parte dalla prima pagina, il resto è storico
+        out: list[Listing] = []
+        for page in range(1, max_pages + 1):
+            got = await src.search(q, page) if page > 1 else await src.search(q)
+            out += got
+            full = src.page_size and len(got) >= src.page_size * 0.8
+            all_new = bool(got) and not any(self.db.seen(l.key) for l in got)
+            if not (full and all_new):
+                break
+            if page == max_pages:
+                stats["capped"] += 1  # ancora tutto nuovo all'ultima pagina: segnalato in copertura
+                log.warning("%s %r: anche la pagina %d è tutta nuova, alza max_pages o abbassa l'intervallo",
+                            src.name, q.q, page)
+            else:
+                stats["extra_pages"] += 1
+        return out
+
+    async def collect(self, name: str, stats: dict | None = None) -> list[Listing]:
         src = self.sources[name]
+        stats = stats if stats is not None else {}
+        stats.update(queries=0, query_errors=0, capped=0, extra_pages=0)
+        prog = self.progress.setdefault(name, {})
         listings: list[Listing] = []
         if src.catalog_mode:
+            prog.update(step="catalogo", done=0, total=1)
             listings = await src.catalog()
         else:
             queries = self.queries_for(name)
+            stats["queries"] = len(queries)
+            prog.update(step="ricerche", done=0, total=len(queries))
             errors: list[Exception] = []
-            for q in queries:
+            for i, q in enumerate(queries):
+                prog["done"] = i
                 try:
-                    got = await src.search(q)
+                    got = await self._search_deep(src, q, stats)
                 except Exception as e:
                     log.info("%s %r: %s", name, q.q, e)
                     errors.append(e)
+                    stats["query_errors"] += 1
                     if len(errors) >= 3 and not listings:
                         raise  # tre errori di fila e nessun risultato: la sorgente è giù
                     continue
@@ -147,7 +187,9 @@ class Engine:
                     listings.append(l)
             if queries and len(errors) == len(queries):
                 raise errors[0]
+            prog["done"] = len(queries)
             if hasattr(src, "scan") and self.cfg["sources"][name].get("scan", True):
+                prog["step"] = "scansione categorie"
                 try:
                     listings += await src.scan()
                 except Exception as e:
@@ -158,17 +200,21 @@ class Engine:
     # --- valutazione -----------------------------------------------------------------
     async def evaluate(self, listing: Listing) -> Deal | None:
         attrs = extract(listing)
-        if "fake_risk" in attrs.flags:
-            return None
-        if "plated" in attrs.flags and attrs.category in (Category.GOLD, Category.BULLION_COIN):
-            return None
-        if attrs.category == Category.OTHER:
-            return None
-        if listing.price < self.cfg["evaluation"].get("min_price_eur", 20) and listing.kind != SaleKind.AUCTION:
+        skip = ("fake_risk" in attrs.flags
+                or ("plated" in attrs.flags and attrs.category in (Category.GOLD, Category.BULLION_COIN))
+                or attrs.category == Category.OTHER
+                or (listing.price < self.cfg["evaluation"].get("min_price_eur", 20) and listing.kind != SaleKind.AUCTION))
+        if skip:
+            self.db.mark_skipped(listing)
             return None
         comps = await self.comps.get(listing, attrs)
         val = value(listing, attrs, comps, self.market, self.cfg["comps"].get("min_similarity", 0.3))
         if not val.fair_value:
+            # prezioso senza prezzo di riferimento: niente scarto silenzioso
+            errs = getattr(comps, "errors", [])
+            reason = ("fonti dei prezzi venduti in errore: " + "; ".join(errs)) if errs else \
+                "nessun venduto simile trovato: valuta a mano"
+            self.db.save_unvalued(listing, attrs.category.value, reason, retry=bool(errs))
             return None
         repair = estimate_repair(listing, attrs)
         deal = self.build_deal(listing, attrs, val, repair)
@@ -264,18 +310,45 @@ class Engine:
 
     # --- esecuzione ----------------------------------------------------------------
     async def run_source(self, name: str) -> list[Deal]:
+        lock = self._locks.setdefault(name, asyncio.Lock())
+        if lock.locked():
+            log.info("%s: scansione già in corso, salto", name)
+            return []
+        async with lock:
+            return await self._run_source(name)
+
+    async def _run_source(self, name: str) -> list[Deal]:
         t0 = time.time()
+        interval_s = self.cfg["sources"][name].get("interval", 60) * 60
+        last_ok = (self.db.kv_get(f"lastok:{name}") or 0)
+        gap = t0 - last_ok if last_ok else None
+        if gap and gap > 2.5 * interval_s:
+            log.warning("%s: buco di copertura di %.0f minuti (intervallo %d): recupero con paginazione",
+                        name, gap / 60, interval_s // 60)
+            if gap > 6 * 3600:
+                await self.notifier.send_text(
+                    f"⏸ <b>{name}</b> non veniva controllato da {gap / 3600:.1f} ore (PC spento o errori). "
+                    "Recupero in corso: guarda anche la dashboard.")
+        self.progress[name] = {"state": "running", "started": t0, "step": "avvio", "done": 0, "total": 0}
+        stats: dict = {}
         try:
-            listings = await self.collect(name)
+            listings = await self.collect(name, stats)
         except Exception as e:
             n = self.db.source_error(name, f"{type(e).__name__}: {e}")
             log.warning("sorgente %s in errore (%d di fila): %s", name, n, e)
+            self.db.log_coverage(name, duration_s=time.time() - t0, queries=stats.get("queries", 0),
+                                 query_errors=stats.get("query_errors", 0), listings=0, new_listings=0,
+                                 capped_queries=stats.get("capped", 0), gap_s=gap, ok=0, error=str(e)[:300])
+            self.progress[name] = {"state": "error", "finished": time.time(), "error": str(e)[:200]}
             if n == 3:
                 await self.notifier.send_text(f"⚠️ La sorgente <b>{name}</b> non risponde da 3 giri: {e}")
             return []
         self.db.source_ok(name, len(listings))
+        self.db.kv_set(f"lastok:{name}", t0)
         reeval = self.cfg["evaluation"].get("reeval_hours", 12) * 3600
+        new_count = sum(1 for l in listings if not self.db.seen(l.key))
         todo = [l for l in listings if self.db.needs_eval(l, reeval)]
+        self.progress[name].update(step="valutazione", done=0, total=len(todo))
         sem = asyncio.Semaphore(self.cfg["evaluation"].get("concurrency", 8))
 
         async def one(l: Listing) -> Deal | None:
@@ -285,6 +358,8 @@ class Engine:
                 except Exception as e:
                     log.debug("valutazione fallita %s: %s", l.key, e)
                     return None
+                finally:
+                    self.progress[name]["done"] += 1
 
         deals = [d for d in await asyncio.gather(*(one(l) for l in todo)) if d]
         quiet = self._quiet_now()
@@ -297,6 +372,12 @@ class Engine:
                  len(listings), len(todo), len(deals), sum(d.level in ("hot", "good") for d in deals),
                  time.time() - t0)
         self.db.kv_set(f"lastrun:{name}", time.time())
+        self.db.log_coverage(name, duration_s=round(time.time() - t0, 1), queries=stats.get("queries", 0),
+                             query_errors=stats.get("query_errors", 0), listings=len(listings),
+                             new_listings=new_count, capped_queries=stats.get("capped", 0), gap_s=gap, ok=1,
+                             error=None)
+        self.progress[name] = {"state": "idle", "finished": time.time(), "listings": len(listings),
+                               "new": new_count, "deals": sum(d.level in ("hot", "good") for d in deals)}
         return deals
 
     async def harvest_results(self, per_source: int = 30) -> int:
@@ -385,3 +466,18 @@ def _hours_left(listing: Listing) -> float | None:
         return None
     end = listing.ends_at if listing.ends_at.tzinfo else listing.ends_at.replace(tzinfo=timezone.utc)
     return (end - datetime.now(timezone.utc)).total_seconds() / 3600
+
+
+class _EventHandler(logging.Handler):
+    """Copia i messaggi del bot in memoria per il registro dal vivo della dashboard."""
+
+    def __init__(self, sink: deque):
+        super().__init__(level=logging.INFO)
+        self.sink = sink
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.sink.append({"t": record.created, "level": record.levelname.lower(),
+                              "msg": record.getMessage()[:300]})
+        except Exception:
+            pass

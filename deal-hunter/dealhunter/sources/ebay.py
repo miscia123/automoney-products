@@ -26,17 +26,19 @@ IT_MONTHS = {"gen": 1, "feb": 2, "mar": 3, "apr": 4, "mag": 5, "giu": 6, "lug": 
 class Ebay(Source):
     name = "ebay"
     profile = "ebay"
+    paged = True
+    page_size = 50
 
     _token: str | None = None
     _token_exp: float = 0
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         if self.secrets.get("ebay_client_id") and self.secrets.get("ebay_client_secret"):
-            out = []
-            for sort in ("newlyListed", "endingSoonest"):
-                out += await self._browse(query, sort)
+            out = await self._browse(query, "newlyListed", page)
+            if page == 1:
+                out += await self._browse(query, "endingSoonest", 1)
             return out
-        return await self._html_active(query)
+        return await self._html_active(query, page)
 
     # --- API ufficiale -----------------------------------------------------------
     async def _ensure_token(self) -> str:
@@ -54,14 +56,14 @@ class Ebay(Source):
         self._token_exp = time.time() + int(d.get("expires_in", 7200))
         return self._token
 
-    async def _browse(self, query: Query, sort: str) -> list[Listing]:
+    async def _browse(self, query: Query, sort: str, page: int = 1) -> list[Listing]:
         token = await self._ensure_token()
         filters = ["priceCurrency:EUR", "itemLocationCountry:IT" if self.cfg.get("italy_only") else None]
         if query.min_price or query.max_price:
             filters.append(f"price:[{int(query.min_price or 0)}..{int(query.max_price) if query.max_price else ''}]")
         if sort == "endingSoonest":
             filters.append("buyingOptions:{AUCTION}")
-        params = {"q": query.text("it"), "sort": sort, "limit": "50",
+        params = {"q": query.text("it"), "sort": sort, "limit": "50", "offset": str((page - 1) * 50),
                   "filter": ",".join(f for f in filters if f)}
         data = await self.http.get_json(
             BROWSE_URL, params=params,
@@ -71,8 +73,8 @@ class Ebay(Source):
         return [l for it in data.get("itemSummaries", []) if (l := _parse_browse(it))]
 
     # --- pagina di ricerca (annunci attivi) ------------------------------------------
-    async def _html_active(self, query: Query) -> list[Listing]:
-        params = {"_nkw": query.text("it"), "_sop": "10", "_ipg": "120"}
+    async def _html_active(self, query: Query, page: int = 1) -> list[Listing]:
+        params = {"_nkw": query.text("it"), "_sop": "10", "_ipg": "60", "_pgn": str(page)}
         if query.min_price:
             params["_udlo"] = str(int(query.min_price))
         if query.max_price:

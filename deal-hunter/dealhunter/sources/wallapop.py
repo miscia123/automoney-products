@@ -17,7 +17,7 @@ class Wallapop(Source):
         super().__init__(*a, **kw)
         self.device_id = str(uuid.uuid4())
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         lat, lon = self.cfg.get("latitude", 41.9028), self.cfg.get("longitude", 12.4964)
         params = {
             "keywords": query.text("it"),

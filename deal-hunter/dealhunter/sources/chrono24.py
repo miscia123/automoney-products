@@ -62,11 +62,14 @@ class Chrono24(Source):
     name = "chrono24"
     profile = "chrono24"
     needs_browser = True
+    paged = True
+    page_size = 60
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         if query.category not in (None, Category.WATCH):
             return []
-        html = await self.http.get_text(search_url(query.text("it"), SORT_NEWEST, query.min_price, query.max_price))
+        html = await self.http.get_text(search_url(query.text("it"), SORT_NEWEST, query.min_price, query.max_price,
+                                                   page=page))
         return parse_chrono24(html)
 
 

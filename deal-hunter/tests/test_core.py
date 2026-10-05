@@ -340,3 +340,107 @@ def test_all_sources_have_a_profile():
 
     for name, cls in REGISTRY.items():
         assert cls.profile in SOURCE_PROFILES, name
+
+
+# --- garanzie anti-perdita e dashboard ------------------------------------------------------
+class PagedFake:
+    """Sorgente finta ordinata per "più recenti": 3 pagine da 10 annunci."""
+    name = "subito"
+    profile = "subito"
+    paged = True
+    page_size = 10
+    catalog_mode = False
+
+    def __init__(self):
+        self.calls = []
+
+    async def search(self, query, page=1):
+        self.calls.append(page)
+        return [L(f"Rolex Datejust {page}-{i}", 5000, source="subito") for i in range(10)][:10] if page <= 3 else []
+
+
+def _ids(listings, page):
+    for i, l in enumerate(listings):
+        l.source_id = f"{page}-{i}"
+    return listings
+
+
+async def test_deep_pagination_until_seen(engine):
+    from dealhunter.sources import Query
+
+    src = PagedFake()
+    orig = src.search
+
+    async def search(q, page=1):
+        return _ids(await orig(q, page), page)
+
+    src.search = search
+    stats = {"capped": 0, "extra_pages": 0}
+    q = Query(q="rolex")
+    # primo giro in assoluto: solo pagina 1
+    got = await engine._search_deep(src, q, stats)
+    assert src.calls == [1] and len(got) == 10
+    for l in got:
+        engine.db.needs_eval(l, 0)
+    # niente di nuovo in pagina 1: ci si ferma
+    src.calls.clear()
+    await engine._search_deep(src, q, stats)
+    assert src.calls == [1]
+    # pagina 1 tutta nuova (picco di inserzioni): continua finché ritrova annunci noti
+
+    async def shifted(q, page=1):
+        if page == 1:
+            return _ids(await orig(q, 3), 3)  # tutta nuova
+        return _ids(await orig(q, 1), 1)      # già vista
+
+    src.search = shifted
+    src.calls.clear()
+    got = await engine._search_deep(src, q, stats)
+    assert len(got) == 20 and stats["extra_pages"] == 1
+
+
+async def test_unvalued_precious_is_kept_not_dropped(engine):
+    from dealhunter.comps import CompsResult
+
+    class NoComps:
+        async def get(self, l, a):
+            return CompsResult([], ["BlockedError: 403"])
+
+    engine.comps = NoComps()
+    l = L("Orologio Universal Genève Polerouter oro", 1300)
+    engine.db.needs_eval(l, 0)
+    assert await engine.evaluate(l) is None
+    rows = engine.db.deals(3600, levels=("unvalued",))
+    assert len(rows) == 1 and "in errore" in rows[0]["reason"]
+    assert engine.db.needs_eval(l, 12 * 3600)  # fonti di prezzo in errore: si riprova al giro dopo
+
+
+async def test_dashboard_api(tmp_path):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from dealhunter.demo import build_demo_db_async
+    from dealhunter.web import Dashboard, export_snapshot
+
+    cfg = load_config(ROOT / "config" / "config.example.yaml")
+    cfg["db_path"] = str(tmp_path / "demo.sqlite")
+    cfg["watchlist"] = str(ROOT / "config" / "watchlist.yaml")
+    await build_demo_db_async(cfg)
+    eng = Engine(cfg)
+    dash = Dashboard(eng, auto=False, demo=True)
+    async with TestClient(TestServer(dash.app())) as client:
+        r = await client.get("/")
+        assert r.status == 200 and "DealHunter" in await r.text()
+        st = await (await client.get("/api/state")).json()
+        assert st["counts24"]["hot"] == 1 and any(s["status"] == "error" for s in st["sources"])
+        deals = await (await client.get("/api/deals?levels=hot,good,watch,unvalued")).json()
+        assert {d["level"] for d in deals} == {"hot", "good", "watch", "unvalued"}
+        key = next(d["key"] for d in deals if d["level"] == "hot")
+        assert (await client.post("/api/status", json={"key": key, "status": "comprato"})).status == 200
+        assert (await client.post("/api/status", json={"key": key, "status": "boh"})).status == 400
+        r = await client.post("/api/scan", json={}, headers={"Origin": "https://sito-estraneo.example"})
+        assert r.status == 403
+        deals = await (await client.get("/api/deals")).json()
+        assert next(d for d in deals if d["key"] == key)["status"] == "comprato"
+    out = export_snapshot(cfg, str(tmp_path / "snap.html"), demo=True)
+    html = Path(out).read_text()
+    assert "window.__DH_SNAPSHOT__" in html and "<!doctype" not in html.lower()

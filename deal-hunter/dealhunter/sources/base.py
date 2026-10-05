@@ -43,6 +43,10 @@ class Source:
     profile: str = "base"  # chiave in SOURCE_PROFILES
     lang: str = "it"
     needs_browser: bool = False
+    # paginazione: se una pagina è tutta di annunci nuovi il motore chiede la successiva,
+    # finché non ritrova annunci già visti (così un picco di inserzioni non fa perdere nulla)
+    paged: bool = False
+    page_size: int = 0
     # se True la sorgente non usa le query della watchlist ma scarica tutto il catalogo
     # (es. aste su pegno, vendite giudiziarie) e il filtro avviene dopo
     catalog_mode: bool = False
@@ -52,7 +56,7 @@ class Source:
         self.cfg = cfg or {}
         self.secrets = secrets or {}
 
-    async def search(self, query: Query) -> list[Listing]:
+    async def search(self, query: Query, page: int = 1) -> list[Listing]:
         raise NotImplementedError
 
     async def catalog(self) -> list[Listing]:

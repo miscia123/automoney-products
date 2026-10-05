@@ -45,7 +45,46 @@ Perché è veloce:
 - Valuta solo gli annunci nuovi o che hanno cambiato prezzo.
 - L'analisi AI tocca solo pochi candidati per giro.
 
-## Installazione (5 minuti)
+## La dashboard sul tuo PC
+
+Il modo più semplice: **doppio clic su `avvia-dashboard.bat`** (Windows) oppure `./avvia-dashboard.sh` (Mac e Linux). La prima volta prepara tutto da solo (ambiente Python, dipendenze, browser per Chrono24); poi apre `http://127.0.0.1:8765` nel browser. Serve Python 3.11 o più recente, da python.org.
+
+Prima del primo avvio apri il file `.env` (lo crea il launcher) e incolla token e chat id di Telegram. Se vuoi il perito AI, aggiungi anche la chiave Anthropic.
+
+Cosa trovi nella dashboard:
+
+- **Affari**: tutti gli affari trovati, con filtri per livello, categoria e fonte, e ordinamenti (migliori, guadagno, ROI, affidabilità, aste in chiusura, più recenti). Cliccando un affare si apre la scheda con il conto completo, i venduti usati per verificare il prezzo (con i link), i motivi del rischio, l'offerta massima e il tuo stato (visto, offerta fatta, comprato, scartato) con le note.
+- **Fonti e copertura**: lo stato di ogni fonte (in orario, in ritardo, in errore, in corso), l'ultimo giro riuscito, gli annunci letti e nuovi, una barra per ciascuno degli ultimi 12 giri e il pulsante **Scansiona** per lanciarla subito. Sotto c'è il registro dal vivo.
+- **Come funziona**: la mappa logica della ricerca e le garanzie anti-perdita, ognuna con il suo stato attuale.
+- **Da verificare**: i preziosi per cui il bot non ha trovato venduti simili, da valutare a mano.
+
+In alto c'è **Scansiona tutto ora**. L'interruttore **Automatico** fa girare ogni fonte al suo intervallo finché la dashboard è aperta. Per provarla senza rete c'è la modalità con dati di esempio: `dealhunter dashboard --demo`.
+
+`dealhunter export-html` salva una pagina statica con gli affari del momento: si apre senza server, anche dal telefono.
+
+La dashboard ascolta solo su `127.0.0.1`, quindi dagli altri dispositivi di casa non è raggiungibile. Rifiuta inoltre le richieste che arrivano da altri siti.
+
+## Come evito di perdere affari
+
+Nessun bot può garantire il 100%, ma ogni modo in cui un affare potrebbe sfuggire ha una contromisura, e la dashboard ne mostra lo stato in ogni momento.
+
+| Rischio | Contromisura |
+|---|---|
+| L'affare dura poco | Intervalli brevi dove gli affari spariscono in fretta: 10-20 minuti per i privati (Subito, Vinted, Kleinanzeigen, r/Watchexchange); da 30 minuti a 6 ore per aste e cataloghi. |
+| Troppi annunci nuovi tra due giri | **Paginazione fino al già visto.** Se la prima pagina è piena di annunci mai visti, il bot legge la seconda, la terza… fino a ritrovare annunci noti (massimo 5 pagine, configurabile con `max_pages`). Se arriva al limite lo segnala in "Fonti e copertura". |
+| PC spento o fonte ferma | **Recupero dei buchi.** Se una fonte non gira da più di 2,5 volte il suo intervallo, al giro successivo il bot lo registra e recupera con la paginazione. Oltre 6 ore manda anche un avviso su Telegram. |
+| Un sito blocca il bot o cambia struttura | **Allarme.** Dopo 3 giri falliti arriva un messaggio su Telegram e la fonte diventa rossa in dashboard. Il riepilogo serale ripete l'elenco. Un errore su una singola ricerca non ferma le altre. |
+| Il bot non sa che prezzo dare | **Nessuno scarto silenzioso.** Un prezioso senza venduti simili finisce in "Da verificare". Se le fonti dei prezzi erano in errore, viene rivalutato al giro dopo. |
+| L'oggetto non è nella watchlist | **Cataloghi interi**: Affide, Zoll, vendite giudiziarie, r/Watchexchange, il mercatino del forum e tutta la categoria Orologi di Catawiki in chiusura. |
+| Il prezzo scende dopo il primo controllo | **Rivalutazione** a ogni ribasso e comunque ogni 12 ore. Le aste dei cataloghi vengono rilette ogni giorno, così l'avviso arriva nelle ultime 24 ore. |
+| Una notifica persa | **Tre canali**: Telegram subito, la dashboard e il riepilogo serale. |
+
+Cosa resta scoperto:
+- un annuncio pubblicato e ritirato tra due giri;
+- un sito bloccato, finché non si aggiorna il connettore (ma lo vedi subito);
+- gli oggetti descritti senza marca, modello o materiale, che si trovano solo con le scansioni di catalogo.
+
+## Installazione a mano (senza launcher)
 
 **Dove farlo girare.** Il posto migliore è un computer sempre acceso **a casa**, in Italia: un Raspberry Pi, un mini PC o un NAS. Vinted, eBay e Catawiki bloccano spesso gli IP dei server in datacenter e quasi mai le connessioni di casa. Su una VPS serve un proxy residenziale italiano (variabile `DEALHUNTER_PROXY`).
 

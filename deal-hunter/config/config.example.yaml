@@ -18,6 +18,7 @@ evaluation:
   auction_alert_window_hours: 24     # avvisa sulle aste solo nelle ultime 24 ore
   reeval_hours: 12
   concurrency: 8
+  max_pages: 5                       # paginazione fino al già visto: pagine massime per ricerca
 
 alerts:
   telegram: {enabled: true, levels: [hot, good]}

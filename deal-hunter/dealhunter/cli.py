@@ -25,16 +25,41 @@ def main(argv: list[str] | None = None) -> None:
     rep.add_argument("--hours", type=float, default=24)
     rep.add_argument("--json", action="store_true")
     sub.add_parser("test-alert", help="manda un messaggio di prova su Telegram/email")
+    db_ = sub.add_parser("dashboard", help="dashboard nel browser: lancia scansioni e guarda gli affari")
+    db_.add_argument("--port", type=int, default=8765)
+    db_.add_argument("--no-auto", action="store_true", help="non scansionare da sola: solo a richiesta")
+    db_.add_argument("--no-browser", action="store_true", help="non aprire il browser")
+    db_.add_argument("--demo", action="store_true", help="dati di esempio, nessuna scansione")
+    ex = sub.add_parser("export-html", help="pagina statica con gli affari di adesso (si apre senza server)")
+    ex.add_argument("out", nargs="?", default="dealhunter-anteprima.html")
+    ex.add_argument("--hours", type=float, default=72)
+    ex.add_argument("--demo", action="store_true", help="esporta i dati di esempio")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
     logging.basicConfig(level=logging.DEBUG if args.verbose else getattr(logging, cfg["log_level"]),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if getattr(args, "demo", False):
+        from .demo import build_demo_db
+
+        cfg["db_path"] = "data/demo.sqlite"
+        build_demo_db(cfg)
     asyncio.run(_dispatch(args, cfg))
 
 
 async def _dispatch(args, cfg) -> None:
     from .engine import Engine
+
+    if args.cmd == "dashboard":
+        from .web import serve
+
+        await serve(cfg, port=args.port, auto=not args.no_auto, open_browser=not args.no_browser, demo=args.demo)
+        return
+    if args.cmd == "export-html":
+        from .web import export_snapshot
+
+        print("scritta", export_snapshot(cfg, args.out, args.hours, demo=args.demo))
+        return
 
     if args.cmd == "report":
         from .db import DB
